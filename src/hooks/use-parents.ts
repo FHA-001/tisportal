@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { hashPassword } from '@/lib/auth-utils';
+import { getCustomSession } from '@/lib/auth-utils';
 
 export interface PaymentHistoryItem {
   id: string;
@@ -458,7 +459,6 @@ export const useCreatePaymentSubmission = () => {
   return useMutation({
     mutationFn: async (submission: {
       student_id: string;
-      parent_id: string;
       academic_session_id: string;
       amount: number;
       payment_date: string;
@@ -467,6 +467,12 @@ export const useCreatePaymentSubmission = () => {
       bank_name?: string;
       file?: File;
     }) => {
+      const session = getCustomSession();
+
+      if (!session || session.role !== 'parent' || !session.session_token) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
       const { file, ...submissionData } = submission;
       let proofUrl: string | null = null;
       let uploadedFilePath: string | null = null;
@@ -489,7 +495,7 @@ export const useCreatePaymentSubmission = () => {
           // Generate unique filename: studentId_timestamp_uuid.extension
           const fileExt = file.name.split('.').pop();
           const fileName = `${submissionData.student_id}_${Date.now()}_${crypto.randomUUID()}.${fileExt}`;
-          const filePath = `${submissionData.parent_id}/${fileName}`;
+          const filePath = `${session.id}/${fileName}`;
 
           // Upload to Supabase Storage
           const { data: uploadData, error: uploadError } = await supabase.storage
@@ -507,17 +513,17 @@ export const useCreatePaymentSubmission = () => {
           proofUrl = uploadData.path;
         }
 
-        // Step 2: Insert payment submission record using RPC to bypass RLS
+        // Step 2: Insert payment submission record using secure RPC
         const { data: rpcData, error: rpcError } = await supabase.rpc('create_payment_submission', {
           p_student_id: submissionData.student_id,
-          p_parent_id: submissionData.parent_id,
           p_academic_session_id: submissionData.academic_session_id,
           p_amount: submissionData.amount,
           p_payment_date: submissionData.payment_date,
           p_payment_method: submissionData.payment_method,
           p_payment_reference: submissionData.payment_reference || null,
           p_bank_name: submissionData.bank_name || null,
-          p_proof_url: proofUrl || null
+          p_proof_url: proofUrl || null,
+          p_session_token: session.session_token
         });
 
         if (rpcError) {
@@ -533,6 +539,15 @@ export const useCreatePaymentSubmission = () => {
           if (uploadedFilePath) {
             await supabase.storage.from('payment-proofs').remove([uploadedFilePath]);
           }
+
+          if (rpcData?.error === 'invalid_session') {
+            throw new Error('Session expired or invalid. Please log in again.');
+          }
+
+          if (rpcData?.error === 'unauthorized_student') {
+            throw new Error('You are not authorized to submit a payment for this student.');
+          }
+
           throw new Error(rpcData?.error || 'Failed to create submission');
         }
 

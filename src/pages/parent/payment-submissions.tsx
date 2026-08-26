@@ -53,7 +53,6 @@ export default function ParentPaymentSubmissions() {
 
     createSubmission.mutate({
       student_id: formData.student_id,
-      parent_id: session?.id || '',
       academic_session_id: formData.academic_session_id,
       amount: parseFloat(formData.amount),
       payment_date: formData.payment_date,

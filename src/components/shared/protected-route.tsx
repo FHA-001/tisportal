@@ -20,14 +20,15 @@ export function ProtectedRoute({ children, requiredRole = 'admin' }: { children:
         return;
       }
 
-      // Check user role from user metadata
-      const userRole = session.user?.user_metadata?.role;
-      
-      // For admin routes, verify the user has admin role
-      if (requiredRole === 'admin' && userRole !== 'admin') {
-        toast.error('Access denied. Admin access required.');
-        setLocation('/login');
-        return;
+      // For admin routes, verify using trusted server-side check
+      if (requiredRole === 'admin') {
+        const { data: isAdmin, error: adminCheckError } = await supabase.rpc('is_admin');
+
+        if (adminCheckError || !isAdmin) {
+          toast.error('Access denied. Admin access required.');
+          setLocation('/login');
+          return;
+        }
       }
 
       // Check admin session timeout

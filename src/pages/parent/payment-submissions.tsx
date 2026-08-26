@@ -8,15 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useParentChildren, usePaymentSubmissions, useCreatePaymentSubmission } from '@/hooks/use-parents';
 import { useAcademicSessions } from '@/hooks/use-academics';
-import { getCustomSession } from '@/lib/auth-utils';
 import { Banknote, Calendar, Loader2, Plus, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function ParentPaymentSubmissions() {
-  const session = getCustomSession();
-  const { data: children = [], isLoading: childrenLoading } = useParentChildren(session?.id);
+  const { data: children = [], isLoading: childrenLoading } = useParentChildren();
   const { data: sessions = [], isLoading: sessionsLoading } = useAcademicSessions();
-  const { data: submissions = [], isLoading: submissionsLoading } = usePaymentSubmissions(session?.id);
+  const { data: submissions = [], isLoading: submissionsLoading } = usePaymentSubmissions();
   const createSubmission = useCreatePaymentSubmission();
 
   const [showForm, setShowForm] = useState(false);

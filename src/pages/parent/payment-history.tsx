@@ -22,10 +22,9 @@ export default function ParentPaymentHistory() {
   const [selectedPayment, setSelectedPayment] = useState<PaymentHistoryItem | null>(null);
 
   const session = getCustomSession();
-  const { data: children = [] } = useParentChildren(session?.id);
+  const { data: children = [] } = useParentChildren();
   const { data: sessions = [] } = useAcademicSessions();
   const { data: payments = [], isLoading } = useParentPaymentHistory(
-    session?.id,
     statusFilter,
     sessionFilter,
     studentFilter

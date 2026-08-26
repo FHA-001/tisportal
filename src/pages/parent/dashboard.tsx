@@ -10,7 +10,7 @@ import { Users, Award, Banknote, Newspaper, ArrowRight } from 'lucide-react';
 
 export default function ParentDashboard() {
   const session = getCustomSession();
-  const { data: children = [], isLoading } = useParentChildren(session?.id);
+  const { data: children = [], isLoading } = useParentChildren();
 
   return (
     <CustomSessionGuard role="parent">

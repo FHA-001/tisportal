@@ -3,12 +3,10 @@ import { CustomSessionGuard } from '@/components/shared/custom-session-guard';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useParentChildren } from '@/hooks/use-parents';
-import { getCustomSession } from '@/lib/auth-utils';
 import { Users, UserCheck, Loader2 } from 'lucide-react';
 
 export default function ParentChildren() {
-  const session = getCustomSession();
-  const { data: children = [], isLoading } = useParentChildren(session?.id);
+  const { data: children = [], isLoading } = useParentChildren();
 
   return (
     <CustomSessionGuard role="parent">

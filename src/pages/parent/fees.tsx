@@ -8,12 +8,10 @@ import { useParentChildren } from '@/hooks/use-parents';
 import { useFeePayments, useStudentFeeSummary } from '@/hooks/use-parents';
 import { usePaymentAccounts } from '@/hooks/use-school-fees';
 import { useAcademicSessions } from '@/hooks/use-academics';
-import { getCustomSession } from '@/lib/auth-utils';
 import { Banknote, Loader2, ChevronDown, User, CreditCard, AlertCircle, CheckCircle, Building2 } from 'lucide-react';
 
 export default function ParentFees() {
-  const session = getCustomSession();
-  const { data: children = [], isLoading: childrenLoading } = useParentChildren(session?.id);
+  const { data: children = [], isLoading: childrenLoading } = useParentChildren();
   const { data: sessions = [] } = useAcademicSessions();
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [selectedTermId, setSelectedTermId] = useState<string>('');

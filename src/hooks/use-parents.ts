@@ -45,24 +45,30 @@ export const useParents = () => {
   });
 };
 
-export const useParentChildren = (parentId?: string) => {
+export const useParentChildren = () => {
   return useQuery({
-    queryKey: ['parentChildren', parentId],
+    queryKey: ['parentChildren'],
     queryFn: async () => {
-      // Use RPC function to bypass RLS and get children with student data
+      const session = getCustomSession();
+
+      if (!session || session.role !== 'parent' || !session.session_token) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
+      // Use secure RPC function with session token
       const { data, error } = await supabase.rpc('get_parent_children', {
-        p_parent_id: parentId
+        p_session_token: session.session_token
       });
-      
+
       if (error) {
         console.error('Error fetching parent children via RPC:', error);
         throw error;
       }
-      
+
       if (!data || data.length === 0) {
         return [];
       }
-      
+
       // Transform the RPC data to match the expected structure
       const transformedData = data.map((item: any) => ({
         id: item.id,
@@ -82,7 +88,53 @@ export const useParentChildren = (parentId?: string) => {
           }
         }
       }));
-      
+
+      return transformedData;
+    }
+  });
+};
+
+// Admin-only hook to view any parent's children (uses secure admin RPC)
+export const useParentChildrenByAdmin = (parentId?: string) => {
+  return useQuery({
+    queryKey: ['parentChildrenByAdmin', parentId],
+    queryFn: async () => {
+      if (!parentId) return [];
+
+      // Use secure admin RPC function with parent ID
+      const { data, error } = await supabase.rpc('get_parent_children_by_admin', {
+        p_parent_id: parentId
+      });
+
+      if (error) {
+        console.error('Error fetching parent children via admin RPC:', error);
+        throw error;
+      }
+
+      if (!data || data.length === 0) {
+        return [];
+      }
+
+      // Transform the RPC data to match the expected structure
+      const transformedData = data.map((item: any) => ({
+        id: item.id,
+        parent_id: item.parent_id,
+        student_id: item.student_id,
+        relationship: item.relationship,
+        is_primary: item.is_primary,
+        students: {
+          id: item.student_id,
+          full_name: item.student_name,
+          admission_number: item.student_admission_number,
+          username: item.student_username,
+          class_id: item.student_class_id,
+          tier: item.student_tier,
+          classes: {
+            name: item.student_class_name
+          }
+        }
+      }));
+
       return transformedData;
     },
     enabled: !!parentId
@@ -206,6 +258,7 @@ export const useAssignStudentToParent = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['parentChildren'] });
       queryClient.invalidateQueries({ queryKey: ['studentParents'] });
+      queryClient.invalidateQueries({ queryKey: ['parentChildrenByAdmin'] });
       toast.success('Student assigned to parent successfully');
     },
     onError: (err: any) => toast.error(err.message)
@@ -225,6 +278,7 @@ export const useRemoveStudentFromParent = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['parentChildren'] });
       queryClient.invalidateQueries({ queryKey: ['studentParents'] });
+      queryClient.invalidateQueries({ queryKey: ['parentChildrenByAdmin'] });
       toast.success('Student removed from parent successfully');
     },
     onError: (err: any) => toast.error(err.message)
@@ -402,25 +456,30 @@ export const useUpdateSchoolAccountDetails = () => {
 };
 
 // --- PAYMENT SUBMISSIONS ---
-export const usePaymentSubmissions = (parentId?: string) => {
+export const usePaymentSubmissions = () => {
   return useQuery({
-    queryKey: ['paymentSubmissions', parentId],
+    queryKey: ['paymentSubmissions'],
     queryFn: async () => {
-      if (!parentId) return [];
-      
+      const session = getCustomSession();
+
+      if (!session || session.role !== 'parent' || !session.session_token) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
+      // Use secure RPC function with session token
       const { data, error } = await supabase.rpc('get_parent_payment_submissions', {
-        p_parent_id: parentId
+        p_session_token: session.session_token
       });
-      
+
       if (error) {
         console.error('Error fetching payment submissions via RPC:', error);
         throw error;
       }
-      
+
       if (!data || data.length === 0) {
         return [];
       }
-      
+
       // Transform the RPC data to match the expected structure
       const transformedData = data.map((item: any) => ({
         id: item.id,
@@ -447,10 +506,9 @@ export const usePaymentSubmissions = (parentId?: string) => {
           name: item.academic_session_name
         }
       }));
-      
+
       return transformedData;
-    },
-    enabled: !!parentId
+    }
   });
 };
 
@@ -564,11 +622,17 @@ export const useCreatePaymentSubmission = () => {
   });
 };
 
-export const useParentPaymentHistory = (parentId?: string, statusFilter?: string, sessionFilter?: string, studentFilter?: string) => {
+export const useParentPaymentHistory = (statusFilter?: string, sessionFilter?: string, studentFilter?: string) => {
   return useQuery({
-    queryKey: ['parentPaymentHistory', parentId, statusFilter, sessionFilter, studentFilter],
+    queryKey: ['parentPaymentHistory', statusFilter, sessionFilter, studentFilter],
     queryFn: async () => {
-      if (!parentId) return [];
+      // Get and validate custom session
+      const session = getCustomSession();
+      if (!session || session.role !== 'parent' || !session.session_token) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
+      const parentId = session.id;
 
       // Fetch payment submissions
       const { data: submissions, error: submissionsError } = await supabase
@@ -612,13 +676,14 @@ export const useParentPaymentHistory = (parentId?: string, statusFilter?: string
         fee_payment_id: null
       }));
 
-      // Fetch fee payments for this parent's children
-      const { data: children } = await supabase
-        .from('parent_students')
-        .select('student_id')
-        .eq('parent_id', parentId);
+      // Fetch fee payments for this parent's children using secure RPC
+      const { data: children, error: childrenError } = await supabase.rpc('get_parent_children', {
+        p_session_token: session.session_token
+      });
 
-      const studentIds = children?.map((c: any) => c.student_id) || [];
+      if (childrenError) throw childrenError;
+
+      const studentIds = children?.map((child: any) => child.student_id) || [];
 
       const { data: feePayments, error: feePaymentsError } = await supabase
         .from('fee_payments')

@@ -28,7 +28,7 @@ import {
   useCreateParent, 
   useUpdateParent, 
   useDeleteParent,
-  useParentChildren,
+  useParentChildrenByAdmin,
   useAssignStudentToParent,
   useRemoveStudentFromParent
 } from '@/hooks/use-parents';
@@ -60,7 +60,7 @@ export default function AdminParents() {
     is_primary: false
   });
 
-  const { data: parentChildren = [] } = useParentChildren(selectedParent?.id);
+  const { data: parentChildren = [] } = useParentChildrenByAdmin(selectedParent?.id);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

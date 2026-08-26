@@ -17,7 +17,7 @@ import { SCHOOL_CONFIG } from '@/lib/app-config';
 
 export default function ParentGrades() {
   const session = getCustomSession();
-  const { data: children = [], isLoading: childrenLoading } = useParentChildren(session?.id);
+  const { data: children = [], isLoading: childrenLoading } = useParentChildren();
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [selectedTerm, setSelectedTerm] = useState<string>('First Term');
   const [showChildDropdown, setShowChildDropdown] = useState(false);

@@ -1,6 +1,5 @@
 export const ROUTE_CONFIG = {
   login: '/login',
-  register: '/register',
   forgotPassword: '/forgot-password',
   resetPassword: '/reset-password',
   resetCustomPassword: '/reset-custom-password',

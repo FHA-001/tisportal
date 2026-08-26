@@ -37,6 +37,7 @@ export type TeacherSession = {
   full_name: string;
   email: string;
   must_change_password: boolean;
+  session_token?: string;
 };
 
 export type StudentSession = {
@@ -48,6 +49,7 @@ export type StudentSession = {
   class_id: string | null;
   tier: string;
   must_change_password: boolean;
+  session_token?: string;
 };
 
 export type ParentSession = {
@@ -56,6 +58,7 @@ export type ParentSession = {
   full_name: string;
   email: string;
   must_change_password: boolean;
+  session_token?: string;
 };
 
 export type CustomSession = TeacherSession | StudentSession | ParentSession;
@@ -136,6 +139,7 @@ export async function loginTeacher(
     full_name: data.full_name,
     email: data.email,
     must_change_password: data.must_change_password || false,
+    session_token: data.session_token,
   };
   setCustomSession(session);
   return { session };
@@ -172,6 +176,7 @@ export async function loginStudent(
     class_id: data.class_id,
     tier: data.tier,
     must_change_password: data.must_change_password || false,
+    session_token: data.session_token,
   };
   setCustomSession(session);
   return { session };
@@ -201,6 +206,7 @@ export async function loginParent(
     full_name: data.full_name,
     email: data.email,
     must_change_password: data.must_change_password || false,
+    session_token: data.session_token,
   };
   setCustomSession(session);
   return { session };

@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAcademicSessions, useCreateSession, useUpdateSession } from '@/hooks/use-academics';
 import { SCHOOL_CONFIG } from '@/lib/app-config';
 import { format } from 'date-fns';
-import { Save, Plus, Calendar, Shield, Settings2, UserPlus, Loader2 } from 'lucide-react';
+import { Save, Plus, Calendar, Shield, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -29,12 +29,6 @@ export default function AdminSettings() {
     is_active: false
   });
 
-  const [newAdminData, setNewAdminData] = useState({
-    email: '',
-    password: ''
-  });
-  const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
-
   const [activeTab, setActiveTab] = useState('academic');
 
   const handleCreateSession = async (e: React.FormEvent) => {
@@ -50,31 +44,6 @@ export default function AdminSettings() {
 
   const updateTerm = async (session: any, term: string) => {
     await updateSession.mutateAsync({ id: session.id, data: { current_term: term } });
-  };
-
-  const handleCreateAdmin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newAdminData.password.length < 6) {
-      toast.error('Password must be at least 6 characters');
-      return;
-    }
-
-    setIsCreatingAdmin(true);
-    const { error } = await supabase.auth.signUp({
-      email: newAdminData.email,
-      password: newAdminData.password,
-      options: {
-        data: { role: 'admin' }
-      }
-    });
-    setIsCreatingAdmin(false);
-
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success('Admin account created successfully. They can now sign in.');
-      setNewAdminData({ email: '', password: '' });
-    }
   };
 
   return (
@@ -200,41 +169,17 @@ export default function AdminSettings() {
           <TabsContent value="security" className="outline-none space-y-6">
             <Card className="border-border shadow-sm">
               <CardHeader>
-                <CardTitle>Create Admin Account</CardTitle>
-                <CardDescription>Add a new administrator to the system. They will be able to access all admin features.</CardDescription>
+                <CardTitle>Admin Account Management</CardTitle>
+                <CardDescription>System administrator access control.</CardDescription>
               </CardHeader>
               <CardContent>
-                <form onSubmit={handleCreateAdmin} className="space-y-4 max-w-md">
-                  <div className="space-y-2">
-                    <Label htmlFor="admin-email">Email Address</Label>
-                    <Input
-                      id="admin-email"
-                      type="email"
-                      placeholder="admin@example.com"
-                      value={newAdminData.email}
-                      onChange={(e) => setNewAdminData({ ...newAdminData, email: e.target.value })}
-                      required
-                      className="h-11"
-                    />
+                <div className="flex items-center justify-center border border-dashed rounded-xl p-8 bg-muted/30">
+                  <div className="text-center">
+                    <Shield className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-50" />
+                    <p className="text-muted-foreground font-medium mb-1">Admin provisioning restricted</p>
+                    <p className="text-sm text-muted-foreground">Additional administrators must be provisioned by an authorized system administrator.</p>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="admin-password">Password</Label>
-                    <Input
-                      id="admin-password"
-                      type="password"
-                      placeholder="Min 6 characters"
-                      value={newAdminData.password}
-                      onChange={(e) => setNewAdminData({ ...newAdminData, password: e.target.value })}
-                      required
-                      className="h-11"
-                    />
-                  </div>
-                  <Button type="submit" className="w-full h-11 bg-navy-700 hover:bg-navy-800 text-white" disabled={isCreatingAdmin}>
-                    {isCreatingAdmin && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    Create Admin Account
-                  </Button>
-                </form>
+                </div>
               </CardContent>
             </Card>
 

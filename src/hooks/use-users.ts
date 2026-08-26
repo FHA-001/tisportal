@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
-import { hashPassword } from '@/lib/auth-utils';
+import { hashPassword, getCustomSession } from '@/lib/auth-utils';
 import { toast } from 'sonner';
 
 // --- STUDENTS ---
@@ -8,14 +8,35 @@ export const useStudents = (role: 'admin' | 'teacher' = 'admin', classId?: strin
   return useQuery({
     queryKey: ['students', role, classId],
     queryFn: async () => {
-      const table = role === 'admin' ? 'students' : 'students_directory';
-      let query = supabase.from(table).select('*, classes(name, tier)');
-      if (classId) {
-        query = query.eq('class_id', classId);
+      if (role === 'admin') {
+        // Admin path: direct table access
+        let query = supabase.from('students').select('*, classes(name, tier)');
+        if (classId) {
+          query = query.eq('class_id', classId);
+        }
+        const { data, error } = await query.order('full_name', { ascending: true });
+        if (error) throw error;
+        return data;
+      } else {
+        // Teacher path: secure RPC with session-token authentication
+        const session = getCustomSession();
+
+        if (!classId) {
+          throw new Error('Class ID is required for teacher student queries');
+        }
+
+        if (!session || session.role !== 'teacher' || !session.session_token) {
+          throw new Error('Session expired or invalid. Please log in again.');
+        }
+
+        const { data, error } = await supabase.rpc('get_students_by_teacher', {
+          p_class_id: classId,
+          p_session_token: session.session_token
+        });
+
+        if (error) throw error;
+        return data;
       }
-      const { data, error } = await query.order('full_name', { ascending: true });
-      if (error) throw error;
-      return data;
     }
   });
 };

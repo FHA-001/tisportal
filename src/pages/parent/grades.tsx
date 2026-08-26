@@ -42,14 +42,7 @@ export default function ParentGrades() {
     try {
       toast.loading('Generating report card...', { id: 'pdf-gen' });
 
-      // Fetch a few extra fields (gender, DOB) not carried in the student data
-      const { data: directoryRow } = await supabase
-        .from('students_directory')
-        .select('gender, date_of_birth, class_id')
-        .eq('id', selectedChild.students.id)
-        .maybeSingle();
-
-      const classId = directoryRow?.class_id || selectedChild.students.class_id;
+      const classId = selectedChild.students.class_id;
 
       const pdfGrades = grades.map(g => ({
         subject: g.class_subjects?.subjects?.name || 'Unknown',

@@ -51,14 +51,7 @@ export default function StudentGrades() {
     try {
       toast.loading('Generating report card...', { id: 'pdf-gen' });
 
-      // Fetch a few extra fields (gender, DOB) not carried in the login session
-      const { data: directoryRow } = await supabase
-        .from('students_directory')
-        .select('gender, date_of_birth, class_id')
-        .eq('id', session.id)
-        .maybeSingle();
-
-      const classId = directoryRow?.class_id || session.class_id;
+      const classId = session.class_id;
       let rankings: Awaited<ReturnType<typeof computeClassRankings>> | null = null;
       if (classId && activeSession?.name) {
         try {

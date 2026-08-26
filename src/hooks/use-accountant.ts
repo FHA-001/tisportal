@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+import { getCustomSession } from '@/lib/auth-utils';
 
 export interface PaymentSubmission {
   id: string;
@@ -117,23 +118,32 @@ export const generateSignedUrl = async (filePath: string): Promise<string> => {
 
 export const useApproveSubmission = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: async ({ submissionId, accountantId, remarks }: { submissionId: string; accountantId: string; remarks: string }) => {
+    mutationFn: async ({ submissionId, remarks }: { submissionId: string; remarks: string }) => {
+      const session = getCustomSession();
+
+      if (!session || session.role !== 'accountant' || !session.session_token) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
       const { data, error } = await supabase.rpc('approve_payment_submission', {
         p_submission_id: submissionId,
-        p_accountant_id: accountantId,
-        p_remarks: remarks
+        p_remarks: remarks,
+        p_session_token: session.session_token
       });
-      
+
       if (error) {
         throw new Error(error.message);
       }
-      
+
       if (!data?.success) {
+        if (data?.error === 'invalid_session') {
+          throw new Error('Session expired or invalid. Please log in again.');
+        }
         throw new Error(data?.error || 'Failed to approve submission');
       }
-      
+
       return data;
     },
     onSuccess: () => {
@@ -148,23 +158,32 @@ export const useApproveSubmission = () => {
 
 export const useRejectSubmission = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: async ({ submissionId, accountantId, remarks }: { submissionId: string; accountantId: string; remarks: string }) => {
+    mutationFn: async ({ submissionId, remarks }: { submissionId: string; remarks: string }) => {
+      const session = getCustomSession();
+
+      if (!session || session.role !== 'accountant' || !session.session_token) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
       const { data, error } = await supabase.rpc('reject_payment_submission', {
         p_submission_id: submissionId,
-        p_accountant_id: accountantId,
-        p_remarks: remarks
+        p_remarks: remarks,
+        p_session_token: session.session_token
       });
-      
+
       if (error) {
         throw new Error(error.message);
       }
-      
+
       if (!data?.success) {
+        if (data?.error === 'invalid_session') {
+          throw new Error('Session expired or invalid. Please log in again.');
+        }
         throw new Error(data?.error || 'Failed to reject submission');
       }
-      
+
       return data;
     },
     onSuccess: () => {

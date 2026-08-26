@@ -81,11 +81,10 @@ export default function AccountantPaymentReview() {
   };
 
   const confirmApprove = () => {
-    if (!selectedSubmission || !session) return;
-    
+    if (!selectedSubmission) return;
+
     approveSubmission.mutate({
       submissionId: selectedSubmission.id,
-      accountantId: session.id,
       remarks: remarks.trim()
     }, {
       onSuccess: () => {
@@ -96,11 +95,10 @@ export default function AccountantPaymentReview() {
   };
 
   const confirmReject = () => {
-    if (!selectedSubmission || !session) return;
-    
+    if (!selectedSubmission) return;
+
     rejectSubmission.mutate({
       submissionId: selectedSubmission.id,
-      accountantId: session.id,
       remarks: remarks.trim()
     }, {
       onSuccess: () => {

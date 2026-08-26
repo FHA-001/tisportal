@@ -29,7 +29,11 @@ export async function verifyPassword(
 // ---------------------------------------------------------------------------
 const SESSION_KEY = 'tis_session';
 const SESSION_TIMESTAMP_KEY = 'tis_session_timestamp';
+const SESSION_SERVER_REFRESH_KEY = 'tis_session_server_refresh';
 const SESSION_TIMEOUT_MINUTES = 30;
+const SERVER_REFRESH_THROTTLE_MINUTES = 5;
+
+let serverRefreshInFlight = false;
 
 export type TeacherSession = {
   role: 'teacher' | 'accountant';
@@ -89,8 +93,36 @@ export function getCustomSession(): CustomSession | null {
 
     // Update timestamp on session access (activity)
     localStorage.setItem(SESSION_TIMESTAMP_KEY, currentTime.toString());
-    
-    return JSON.parse(raw) as CustomSession;
+
+    const session = JSON.parse(raw) as CustomSession;
+
+    // Throttled server-side session refresh
+    // Only refresh if session_token exists and at least 5 minutes have passed since last server refresh
+    if (session.session_token) {
+      const serverRefreshTimestamp = localStorage.getItem(SESSION_SERVER_REFRESH_KEY);
+      const serverRefreshTime = serverRefreshTimestamp ? parseInt(serverRefreshTimestamp, 10) : 0;
+      const elapsedSinceServerRefresh = (currentTime - serverRefreshTime) / (1000 * 60);
+
+      if (elapsedSinceServerRefresh >= SERVER_REFRESH_THROTTLE_MINUTES && !serverRefreshInFlight) {
+        // Fire-and-forget refresh - don't await, don't block
+        (async () => {
+          serverRefreshInFlight = true;
+          try {
+            const { data } = await supabase.rpc('refresh_custom_session', { p_token: session.session_token });
+            // Only update refresh timestamp if server refresh succeeded
+            if (data?.success) {
+              localStorage.setItem(SESSION_SERVER_REFRESH_KEY, currentTime.toString());
+            }
+          } catch {
+            // Silent failure - will be caught on next RPC call
+          } finally {
+            serverRefreshInFlight = false;
+          }
+        })();
+      }
+    }
+
+    return session;
   } catch {
     return null;
   }
@@ -99,6 +131,7 @@ export function getCustomSession(): CustomSession | null {
 export function clearCustomSession(): void {
   localStorage.removeItem(SESSION_KEY);
   localStorage.removeItem(SESSION_TIMESTAMP_KEY);
+  localStorage.removeItem(SESSION_SERVER_REFRESH_KEY);
 }
 
 export function isSessionExpired(): boolean {
@@ -321,6 +354,7 @@ export async function resetPasswordWithToken(
 // ---------------------------------------------------------------------------
 // Teacher-initiated student creation (Teacher Students page). Goes through a
 // SECURITY DEFINER RPC because the teacher session only carries the anon key.
+// Now requires session_token for server-side authentication.
 // ---------------------------------------------------------------------------
 export async function createStudentByTeacher(payload: {
   full_name: string;
@@ -337,7 +371,31 @@ export async function createStudentByTeacher(payload: {
   parent_phone?: string;
   parent_email?: string;
 }) {
-  return supabase.rpc('create_student_by_teacher', { p: payload });
+  const session = getCustomSession();
+
+  if (!session?.session_token) {
+    return { error: { message: 'No valid session. Please log in again.' } };
+  }
+
+  const payloadWithToken = {
+    ...payload,
+    session_token: session.session_token
+  };
+
+  const { data, error } = await supabase.rpc('create_student_by_teacher', { p: payloadWithToken });
+
+  if (error) return { error };
+  if (data?.error === 'invalid_session') {
+    return { error: { message: 'Session expired or invalid. Please log in again.' } };
+  }
+  if (data?.error === 'unauthorized_class') {
+    return { error: { message: 'You are not authorized to create students in this class.' } };
+  }
+  if (data?.error) {
+    return { error: { message: data.error } };
+  }
+
+  return { data };
 }
 
 // ---------------------------------------------------------------------------
@@ -430,7 +488,7 @@ export function generateAdmissionNumber(
 ): string {
   const prefix = ADMISSION_PREFIX_MAP[tier] || 'STU';
   const numbers = existingNumbers
-    .filter((n) => n.startsWith(prefix))
+    .filter((n): n is string => typeof n === 'string' && n.startsWith(prefix))
     .map((n) => parseInt(n.replace(prefix, ''), 10))
     .filter((n) => !isNaN(n));
   const next = numbers.length > 0 ? Math.max(...numbers) + 1 : 1001;

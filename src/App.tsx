@@ -19,7 +19,6 @@ import ParentAnnouncements from '@/pages/parent/announcements';
 import ParentNewsletters from '@/pages/parent/newsletters';
 import ParentPaymentSubmissions from '@/pages/parent/payment-submissions';
 import ParentPaymentHistory from '@/pages/parent/payment-history';
-import ResetCustomPassword from '@/pages/auth/reset-custom-password';
 import SchoolFees from '@/pages/school-fees';
 import NotFound from '@/pages/not-found';
 
@@ -80,7 +79,6 @@ function Router() {
       <Route path="/school-fees" component={SchoolFees} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/change-password" component={ChangePassword} />
-      <Route path="/reset-custom-password" component={ResetCustomPassword} />
 
       {/* Admin Routes */}
       <Route path="/admin" component={AdminDashboard} />

@@ -316,40 +316,6 @@ export function validatePasswordStrength(password: string): {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Custom password reset (teacher/student). No live email sender is wired up
-// yet, so `requestPasswordReset` returns the token directly for now — once
-// an email-sending edge function is deployed, have it email the token
-// instead of returning it to the client.
-// ---------------------------------------------------------------------------
-export async function requestPasswordReset(
-  role: 'teacher' | 'student' | 'parent',
-  identifier: string,
-): Promise<{ token?: string; error?: string }> {
-  const { data, error } = await supabase.rpc('request_password_reset', {
-    p_role: role,
-    p_identifier: identifier,
-  });
-  if (error) return { error: error.message };
-  if (data?.error) return { error: 'No matching account was found.' };
-  return { token: data.token };
-}
-
-export async function resetPasswordWithToken(
-  role: 'teacher' | 'student' | 'parent',
-  token: string,
-  newPassword: string,
-): Promise<{ success?: boolean; error?: string }> {
-  const passwordHash = await hashPassword(newPassword);
-  const { data, error } = await supabase.rpc('reset_password_with_token', {
-    p_role: role,
-    p_token: token,
-    p_new_password_hash: passwordHash,
-  });
-  if (error) return { error: error.message };
-  if (data?.error) return { error: 'This reset link is invalid or has expired.' };
-  return { success: true };
-}
 
 // ---------------------------------------------------------------------------
 // Teacher-initiated student creation (Teacher Students page). Goes through a

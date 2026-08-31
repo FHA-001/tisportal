@@ -249,12 +249,12 @@ export async function loginParent(
 // Change password (for teachers, students, parents)
 // ---------------------------------------------------------------------------
 export async function changePassword(
-  userId: string,
+  sessionToken: string,
   currentPassword: string,
   newPassword: string,
 ): Promise<{ success?: boolean; error?: string }> {
   const { data, error } = await supabase.rpc('change_password', {
-    p_user_id: userId,
+    p_session_token: sessionToken,
     p_current_password: currentPassword,
     p_new_password: newPassword,
   });

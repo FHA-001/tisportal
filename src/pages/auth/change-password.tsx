@@ -29,66 +29,81 @@ export default function ChangePassword() {
     return null;
   }
 
+  // Check for session token
+  if (!session.session_token) {
+    toast.error('Session expired or invalid. Please log in again.');
+    clearCustomSession();
+    setLocation('/login');
+    return null;
+  }
+
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
-    
+
     // Basic validation
     if (!currentPassword) {
       setErrors({ currentPassword: 'Current password is required' });
       return;
     }
-    
+
     if (!newPassword) {
       setErrors({ newPassword: 'New password is required' });
       return;
     }
-    
+
     if (!confirmPassword) {
       setErrors({ confirmPassword: 'Please confirm your password' });
       return;
     }
-    
+
     if (newPassword !== confirmPassword) {
       setErrors({ confirmPassword: 'Passwords do not match' });
       return;
     }
-    
+
     if (currentPassword === newPassword) {
       setErrors({ newPassword: 'New password must be different from current password' });
       return;
     }
-    
+
     // Password strength validation
     const strengthValidation = validatePasswordStrength(newPassword);
     if (!strengthValidation.isValid) {
       setErrors({ newPassword: strengthValidation.errors[0] });
       return;
     }
-    
+
     setIsLoading(true);
-    
-    const result = await changePassword(session.id, currentPassword, newPassword);
-    
+
+    const result = await changePassword(session.session_token, currentPassword, newPassword);
+
     setIsLoading(false);
-    
+
     if (result.error) {
       if (result.error === 'invalid_password') {
         setErrors({ currentPassword: 'Current password is incorrect' });
+      } else if (result.error === 'invalid_session') {
+        toast.error('Session expired or invalid. Please log in again.');
+        clearCustomSession();
+        setLocation('/login');
       } else {
         toast.error(result.error);
       }
     } else {
       toast.success('Password changed successfully');
-      
+
       // Update session to clear must_change_password flag
       const updatedSession = { ...session, must_change_password: false };
-      localStorage.setItem('tis_session', JSON.stringify(updatedSession));
-      
+      setCustomSession(updatedSession);
+
       // Redirect to appropriate dashboard
       switch (session.role) {
         case 'teacher':
           setLocation('/teacher');
+          break;
+        case 'accountant':
+          setLocation('/accountant');
           break;
         case 'student':
           setLocation('/student');

@@ -14,6 +14,22 @@ export const useClasses = () => {
   });
 };
 
+// Public class selection for signup (no count aggregation for anon compatibility)
+export const usePublicClasses = () => {
+  return useQuery({
+    queryKey: ['publicClasses'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('classes')
+        .select('id, name, tier, level, sort_order')
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+};
+
 export const useCreateClass = () => {
   const queryClient = useQueryClient();
   return useMutation({

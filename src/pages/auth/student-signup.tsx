@@ -7,13 +7,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { TISLogo } from '@/components/shared/tis-logo';
-import { useClasses } from '@/hooks/use-academics';
+import { usePublicClasses } from '@/hooks/use-academics';
 import { generateUsernameFromName } from '@/lib/auth-utils';
 import { supabase } from '@/lib/supabaseClient';
 
 export default function StudentSignup() {
   const [, setLocation] = useLocation();
-  const { data: classes = [] } = useClasses();
+  const {
+    data: classes = [],
+    isLoading: classesLoading,
+    error: classesError
+  } = usePublicClasses();
   
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -60,10 +64,16 @@ export default function StudentSignup() {
     e.preventDefault();
 
     // Validation
-    if (!formData.full_name || !formData.username || !formData.password || 
-        !formData.email || !formData.gender || !formData.class_id || 
+    if (!formData.full_name || !formData.username || !formData.password ||
+        !formData.gender || !formData.class_id ||
         !formData.date_of_birth || !formData.parent_name) {
       toast.error('Please fill in all required fields');
+      return;
+    }
+
+    // Validate email format only if provided
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      toast.error('Invalid email format');
       return;
     }
 
@@ -80,7 +90,7 @@ export default function StudentSignup() {
         p_full_name: formData.full_name,
         p_username: formData.username,
         p_password: formData.password,
-        p_email: formData.email,
+        p_email: formData.email?.trim() || null,
         p_phone_number: formData.phone_number,
         p_gender: formData.gender,
         p_class_id: formData.class_id,
@@ -165,13 +175,12 @@ export default function StudentSignup() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
                   className="h-11"
                 />
               </div>
@@ -203,11 +212,26 @@ export default function StudentSignup() {
                     <SelectValue placeholder="Select class" />
                   </SelectTrigger>
                   <SelectContent>
-                    {classes.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name} ({c.tier})
-                      </SelectItem>
-                    ))}
+                    {classesLoading ? (
+                      <div className="p-2 text-sm text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading classes...
+                      </div>
+                    ) : classesError ? (
+                      <div className="p-2 text-sm text-destructive">
+                        Unable to load classes
+                      </div>
+                    ) : classes.length === 0 ? (
+                      <div className="p-2 text-sm text-muted-foreground">
+                        No classes available
+                      </div>
+                    ) : (
+                      classes.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>

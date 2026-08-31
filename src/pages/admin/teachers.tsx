@@ -100,9 +100,9 @@ export default function AdminTeachers() {
   };
 
   const handleResetPassword = async (teacher: any) => {
-    const result = await adminResetPassword('teacher', teacher.id, 'Teacher@123');
+    const result = await adminResetPassword('teacher', teacher.id, 'Teacher@12');
     if (result.success) {
-      toast.success(`Password reset for ${teacher.full_name}. Default password: Teacher@123`);
+      toast.success(`Password reset for ${teacher.full_name}. Default password: Teacher@12`);
     } else {
       toast.error(result.error || 'Failed to reset password');
     }

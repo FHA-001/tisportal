@@ -171,9 +171,9 @@ export default function AdminStudents() {
   };
 
   const handleResetPassword = async (student: any) => {
-    const result = await adminResetPassword('student', student.id, 'Student@123');
+    const result = await adminResetPassword('student', student.id, 'Student@12');
     if (result.success) {
-      toast.success(`Password reset for ${student.full_name}. Default password: Student@123`);
+      toast.success(`Password reset for ${student.full_name}. Default password: Student@12`);
     } else {
       toast.error(result.error || 'Failed to reset password');
     }

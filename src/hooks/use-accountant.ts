@@ -31,17 +31,25 @@ export const useAllPaymentSubmissions = (search?: string, statusFilter?: string,
   return useQuery({
     queryKey: ['allPaymentSubmissions', search, statusFilter, sessionFilter, methodFilter],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_all_payment_submissions');
-      
+      const session = getCustomSession();
+
+      if (!session || session.role !== 'accountant' || !session.session_token) {
+        throw new Error('Invalid or expired accountant session');
+      }
+
+      const { data, error } = await supabase.rpc('get_all_payment_submissions', {
+        p_session_token: session.session_token
+      });
+
       if (error) {
         console.error('Error fetching payment submissions via RPC:', error);
         throw error;
       }
-      
+
       if (!data || data.length === 0) {
         return [];
       }
-      
+
       // Transform the RPC data to match the expected structure
       const transformedData = data.map((item: any) => ({
         id: item.id,
@@ -66,10 +74,10 @@ export const useAllPaymentSubmissions = (search?: string, statusFilter?: string,
         parent_email: item.parent_email,
         academic_session_name: item.academic_session_name
       }));
-      
+
       // Apply filters
       let filtered = transformedData;
-      
+
       if (search) {
         const searchLower = search.toLowerCase();
         filtered = filtered.filter((item: PaymentSubmission) =>
@@ -78,19 +86,19 @@ export const useAllPaymentSubmissions = (search?: string, statusFilter?: string,
           item.parent_name.toLowerCase().includes(searchLower)
         );
       }
-      
+
       if (statusFilter) {
         filtered = filtered.filter((item: PaymentSubmission) => item.status === statusFilter);
       }
-      
+
       if (sessionFilter) {
         filtered = filtered.filter((item: PaymentSubmission) => item.academic_session_id === sessionFilter);
       }
-      
+
       if (methodFilter) {
         filtered = filtered.filter((item: PaymentSubmission) => item.payment_method === methodFilter);
       }
-      
+
       return filtered;
     }
   });

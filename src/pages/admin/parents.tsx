@@ -6,12 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { 
-  Users, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Loader2, 
+import {
+  Users,
+  Plus,
+  Edit,
+  Trash2,
+  Loader2,
   UserPlus,
   X,
   Mail,
@@ -19,7 +19,9 @@ import {
   MapPin,
   CheckCircle,
   XCircle,
-  RefreshCw
+  RefreshCw,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminResetPassword } from '@/lib/auth-utils';
@@ -47,10 +49,11 @@ export default function AdminParents() {
   const [editingParent, setEditingParent] = useState<any>(null);
   const [selectedParent, setSelectedParent] = useState<any>(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
-    password: '',
+    password: 'Parent@12',
     phone_number: '',
     address: ''
   });
@@ -79,7 +82,8 @@ export default function AdminParents() {
       await createParent.mutateAsync(formData);
     }
 
-    setFormData({ full_name: '', email: '', password: '', phone_number: '', address: '' });
+    setFormData({ full_name: '', email: '', password: 'Parent@12', phone_number: '', address: '' });
+    setShowPassword(false);
     setShowForm(false);
     setEditingParent(null);
   };
@@ -89,10 +93,11 @@ export default function AdminParents() {
     setFormData({
       full_name: parent.full_name,
       email: parent.email,
-      password: '',
+      password: '', // Leave blank when editing
       phone_number: parent.phone_number || '',
       address: parent.address || ''
     });
+    setShowPassword(false);
     setShowForm(true);
   };
 
@@ -103,16 +108,17 @@ export default function AdminParents() {
   };
 
   const handleResetPassword = async (parent: any) => {
-    const result = await adminResetPassword('parent', parent.id, 'Parent@123');
+    const result = await adminResetPassword('parent', parent.id, 'Parent@12');
     if (result.success) {
-      toast.success(`Password reset for ${parent.full_name}. Default password: Parent@123`);
+      toast.success(`Password reset for ${parent.full_name}. Default password: Parent@12`);
     } else {
       toast.error(result.error || 'Failed to reset password');
     }
   };
 
   const handleCancel = () => {
-    setFormData({ full_name: '', email: '', password: '', phone_number: '', address: '' });
+    setFormData({ full_name: '', email: '', password: 'Parent@12', phone_number: '', address: '' });
+    setShowPassword(false);
     setShowForm(false);
     setEditingParent(null);
   };
@@ -190,14 +196,31 @@ export default function AdminParents() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password">Password *</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder={editingParent ? 'Leave blank to keep current password' : 'Enter password'}
-                    required={!editingParent}
-                  />
+                  {editingParent ? (
+                    <div className="p-3 bg-muted rounded-md text-sm text-muted-foreground">
+                      Password can only be reset using the Reset Password button.
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        placeholder="Enter password"
+                        required
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setShowPassword(!showPassword)}
+                        title={showPassword ? "Hide Password" : "Show Password"}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">

@@ -4,7 +4,7 @@ import { ProtectedRoute } from '@/components/shared/protected-route';
 import { PageHeader } from '@/components/shared/page-header';
 import { useStudents, useCreateStudentAdmin, useUpdateStudentAdmin, useDeleteStudentAdmin } from '@/hooks/use-users';
 import { useClasses } from '@/hooks/use-academics';
-import { generateAdmissionNumber, adminResetPassword } from '@/lib/auth-utils';
+import { adminResetPassword, generateUsernameFromName } from '@/lib/auth-utils';
 import { sanitizeFormData, validateStudentData } from '@/lib/validation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,12 +31,14 @@ export default function AdminStudents() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [usernameManuallyEdited, setUsernameManuallyEdited] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
     full_name: '',
     username: '',
-    password: '',
+    password: 'Student@12',
+    admission_number: '',
     email: '',
     phone_number: '',
     gender: '',
@@ -46,7 +48,7 @@ export default function AdminStudents() {
     parent_name: '',
     parent_phone: '',
     parent_email: '',
-    status: 'Active'
+    status: 'approved'
   });
 
   const filteredStudents = useMemo(() => {
@@ -66,6 +68,7 @@ export default function AdminStudents() {
         full_name: student.full_name,
         username: student.username,
         password: '', // Leave blank when editing
+        admission_number: student.admission_number || '',
         email: student.email || '',
         phone_number: student.phone_number || '',
         gender: student.gender || '',
@@ -79,10 +82,11 @@ export default function AdminStudents() {
       });
     } else {
       setEditingId(null);
+      setUsernameManuallyEdited(false);
       setFormData({
-        full_name: '', username: '', password: '', email: '', phone_number: '',
+        full_name: '', username: '', password: 'Student@12', admission_number: '', email: '', phone_number: '',
         gender: '', class_id: '', tier: '', date_of_birth: '',
-        parent_name: '', parent_phone: '', parent_email: '', status: 'Active'
+        parent_name: '', parent_phone: '', parent_email: '', status: 'approved'
       });
     }
     setShowPassword(false);
@@ -94,26 +98,69 @@ export default function AdminStudents() {
     setFormData(prev => ({ ...prev, class_id: classId, tier: selectedClass?.tier || prev.tier }));
   };
 
+  const handleFullNameChange = (fullName: string) => {
+    setFormData(prev => ({ ...prev, full_name: fullName }));
+    // Auto-generate username only in create mode and if not manually edited
+    if (!editingId && !usernameManuallyEdited) {
+      const generatedUsername = generateUsernameFromName(fullName);
+      if (generatedUsername) {
+        setFormData(prev => ({ ...prev, username: generatedUsername }));
+      }
+    }
+  };
+
+  const handleUsernameChange = (username: string) => {
+    setFormData(prev => ({ ...prev, username }));
+    // Mark as manually edited only in create mode
+    if (!editingId) {
+      setUsernameManuallyEdited(true);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Validate and sanitize form data
-    const validation = validateStudentData(formData);
+    const validation = validateStudentData(formData, !!editingId);
     if (!validation.valid) {
       toast.error(validation.errors.join(', '));
       return;
     }
     
     const sanitizedData = sanitizeFormData(formData);
-    
+
+    // Check for duplicate admission number if provided
+    const admissionNumber = sanitizedData.admission_number?.trim();
+    if (admissionNumber) {
+      const duplicate = students.find(
+        s => s.admission_number?.trim() === admissionNumber && s.id !== editingId
+      );
+      if (duplicate) {
+        toast.error(`Admission number ${admissionNumber} is already assigned to ${duplicate.full_name}`);
+        return;
+      }
+    }
+
     if (editingId) {
       // Don't send empty password
       const { password, ...rest } = sanitizedData;
-      const submitData = password ? { ...rest, password } : rest;
+      // Normalize blank admission_number to null for edit mode too
+      const normalizedAdmissionNumber = rest.admission_number?.trim() || null;
+      const submitData = {
+        ...rest,
+        admission_number: normalizedAdmissionNumber
+      };
+      if (password) {
+        submitData.password = password;
+      }
       await updateStudent.mutateAsync({ id: editingId, data: submitData });
     } else {
-      const admission_number = generateAdmissionNumber(sanitizedData.tier, students.map(s => s.admission_number));
-      await createStudent.mutateAsync({ ...sanitizedData, admission_number });
+      // Normalize blank admission_number to null
+      const submitData = {
+        ...sanitizedData,
+        admission_number: sanitizedData.admission_number?.trim() || null
+      };
+      await createStudent.mutateAsync(submitData);
     }
     setIsDialogOpen(false);
   };
@@ -171,7 +218,8 @@ export default function AdminStudents() {
         });
         
         if (student.full_name && student.username && student.password && student.class_id && student.tier) {
-          student.admission_number = generateAdmissionNumber(student.tier, students.map(s => s.admission_number));
+          // Normalize blank admission_number to null
+          student.admission_number = student.admission_number?.trim() || null;
           student.status = 'Active';
           studentsToCreate.push(student);
         }
@@ -354,11 +402,15 @@ export default function AdminStudents() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="full_name">Full Name *</Label>
-                  <Input id="full_name" required value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} />
+                  <Input id="full_name" required value={formData.full_name} onChange={e => handleFullNameChange(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="username">Username *</Label>
-                  <Input id="username" required value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} />
+                  <Input id="username" required value={formData.username} onChange={e => handleUsernameChange(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="admission_number">Admission Number (Optional)</Label>
+                  <Input id="admission_number" value={formData.admission_number} onChange={e => setFormData({...formData, admission_number: e.target.value})} placeholder="Leave blank for auto-assignment" />
                 </div>
                 <div className="space-y-2 relative">
                   <Label htmlFor="password">{editingId ? 'New Password (leave blank to keep current)' : 'Password *'}</Label>

@@ -37,10 +37,10 @@ export function isValidPhoneNumber(phone: string): boolean {
 }
 
 /**
- * Validate username (alphanumeric and underscores only)
+ * Validate username (alphanumeric, underscores, and periods between segments)
  */
 export function isValidUsername(username: string): boolean {
-  const usernameRegex = /^[a-zA-Z0-9_]+$/;
+  const usernameRegex = /^[a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*$/;
   return usernameRegex.test(username) && username.length >= 3;
 }
 
@@ -69,7 +69,7 @@ export function sanitizeFormData<T extends Record<string, any>>(data: T): T {
 /**
  * Validate student registration data
  */
-export function validateStudentData(data: any): { valid: boolean; errors: string[] } {
+export function validateStudentData(data: any, isEdit: boolean = false): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   
   if (!data.full_name || data.full_name.trim().length < 2) {
@@ -77,11 +77,14 @@ export function validateStudentData(data: any): { valid: boolean; errors: string
   }
   
   if (!data.username || !isValidUsername(data.username)) {
-    errors.push('Username must be at least 3 characters and contain only letters, numbers, and underscores');
+    errors.push('Username must be at least 3 characters and contain only letters, numbers, underscores, and periods');
   }
   
-  if (!data.password || data.password.length < 6) {
-    errors.push('Password must be at least 6 characters');
+  // Only validate password in create mode or if provided in edit mode
+  if (!isEdit || data.password) {
+    if (!data.password || data.password.length < 6) {
+      errors.push('Password must be at least 6 characters');
+    }
   }
   
   if (data.email && !isValidEmail(data.email)) {
@@ -98,7 +101,7 @@ export function validateStudentData(data: any): { valid: boolean; errors: string
 /**
  * Validate teacher registration data
  */
-export function validateTeacherData(data: any): { valid: boolean; errors: string[] } {
+export function validateTeacherData(data: any, isEdit: boolean = false): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   
   if (!data.full_name || data.full_name.trim().length < 2) {
@@ -109,8 +112,11 @@ export function validateTeacherData(data: any): { valid: boolean; errors: string
     errors.push('Valid email is required');
   }
   
-  if (!data.password || data.password.length < 6) {
-    errors.push('Password must be at least 6 characters');
+  // Only validate password in create mode or if provided in edit mode
+  if (!isEdit || data.password) {
+    if (!data.password || data.password.length < 6) {
+      errors.push('Password must be at least 6 characters');
+    }
   }
   
   if (data.phone_number && !isValidPhoneNumber(data.phone_number)) {

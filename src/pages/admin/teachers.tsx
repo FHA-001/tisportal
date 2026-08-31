@@ -33,7 +33,7 @@ export default function AdminTeachers() {
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
-    password: '',
+    password: 'Teacher@12',
     phone_number: '',
     gender: '',
     date_of_birth: '',
@@ -55,7 +55,7 @@ export default function AdminTeachers() {
       setFormData({
         full_name: teacher.full_name,
         email: teacher.email,
-        password: '',
+        password: '', // Leave blank when editing
         phone_number: teacher.phone_number || '',
         gender: teacher.gender || '',
         date_of_birth: teacher.date_of_birth || '',
@@ -64,7 +64,7 @@ export default function AdminTeachers() {
     } else {
       setEditingId(null);
       setFormData({
-        full_name: '', email: '', password: '', phone_number: '',
+        full_name: '', email: '', password: 'Teacher@12', phone_number: '',
         gender: '', date_of_birth: '', status: 'Active'
       });
     }
@@ -76,7 +76,7 @@ export default function AdminTeachers() {
     e.preventDefault();
     
     // Validate and sanitize form data
-    const validation = validateTeacherData(formData);
+    const validation = validateTeacherData(formData, !!editingId);
     if (!validation.valid) {
       toast.error(validation.errors.join(', '));
       return;

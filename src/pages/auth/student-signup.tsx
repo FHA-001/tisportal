@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { TISLogo } from '@/components/shared/tis-logo';
 import { useClasses } from '@/hooks/use-academics';
+import { generateUsernameFromName } from '@/lib/auth-utils';
 import { supabase } from '@/lib/supabaseClient';
 
 export default function StudentSignup() {
@@ -16,6 +17,7 @@ export default function StudentSignup() {
   
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [usernameManuallyEdited, setUsernameManuallyEdited] = useState(false);
 
   const [formData, setFormData] = useState({
     full_name: '',
@@ -32,11 +34,26 @@ export default function StudentSignup() {
   });
 
   const handleClassChange = (classId: string) => {
-    const selectedClass = classes.find(c => c.id === classId);
     setFormData(prev => ({ 
       ...prev, 
       class_id: classId
     }));
+  };
+
+  const handleFullNameChange = (fullName: string) => {
+    setFormData(prev => ({ ...prev, full_name: fullName }));
+    // Auto-generate username only if not manually edited
+    if (!usernameManuallyEdited) {
+      const generatedUsername = generateUsernameFromName(fullName);
+      if (generatedUsername) {
+        setFormData(prev => ({ ...prev, username: generatedUsername }));
+      }
+    }
+  };
+
+  const handleUsernameChange = (username: string) => {
+    setFormData(prev => ({ ...prev, username }));
+    setUsernameManuallyEdited(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -101,14 +118,14 @@ export default function StudentSignup() {
         </div>
         
         <div className="p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="full_name">Full Name *</Label>
                 <Input
                   id="full_name"
                   value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  onChange={(e) => handleFullNameChange(e.target.value)}
                   required
                   className="h-11"
                 />
@@ -118,9 +135,10 @@ export default function StudentSignup() {
                 <Input
                   id="username"
                   value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  onChange={(e) => handleUsernameChange(e.target.value)}
                   required
                   className="h-11"
+                  autoComplete="off"
                 />
               </div>
               <div className="space-y-2 relative">
@@ -134,6 +152,7 @@ export default function StudentSignup() {
                     required
                     minLength={6}
                     className="h-11 pr-10"
+                    autoComplete="new-password"
                   />
                   <button
                     type="button"

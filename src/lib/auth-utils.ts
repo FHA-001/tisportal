@@ -476,21 +476,35 @@ export function computeTotal(scores: ScoreFields): number {
   return (test_1 || 0) + (test_2 || 0) + (project_1 || 0) + (assignment_1 || 0) + (exam || 0);
 }
 
-const ADMISSION_PREFIX_MAP: Record<string, string> = {
-  Primary: 'PRI',
-  'Junior Secondary': 'JSS',
-  'Senior Secondary': 'SSS',
-};
+// ---------------------------------------------------------------------------
+// Username generation from full name
+// ---------------------------------------------------------------------------
+export function generateUsernameFromName(fullName: string): string {
+  if (!fullName) return '';
 
-export function generateAdmissionNumber(
-  tier: SchoolTier | string,
-  existingNumbers: string[],
-): string {
-  const prefix = ADMISSION_PREFIX_MAP[tier] || 'STU';
-  const numbers = existingNumbers
-    .filter((n): n is string => typeof n === 'string' && n.startsWith(prefix))
-    .map((n) => parseInt(n.replace(prefix, ''), 10))
-    .filter((n) => !isNaN(n));
-  const next = numbers.length > 0 ? Math.max(...numbers) + 1 : 1001;
-  return `${prefix}${next}`;
+  // Trim leading/trailing spaces
+  const trimmed = fullName.trim();
+
+  // Split on whitespace
+  const parts = trimmed.split(/\s+/).filter(p => p.length > 0);
+
+  if (parts.length === 0) return '';
+
+  // Use first two meaningful name parts, or just the first if only one
+  const nameParts = parts.slice(0, 2);
+
+  // Normalize each part: lowercase and remove unsupported characters
+  const normalizedParts = nameParts.map(part => {
+    return part
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, ''); // Remove anything except letters and numbers
+  });
+
+  // Filter out empty parts after normalization
+  const validParts = normalizedParts.filter(p => p.length > 0);
+
+  if (validParts.length === 0) return '';
+
+  // Join with period
+  return validParts.join('.');
 }

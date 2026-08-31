@@ -4,7 +4,7 @@ import { CustomSessionGuard } from '@/components/shared/custom-session-guard';
 import { PageHeader } from '@/components/shared/page-header';
 import { useStudents } from '@/hooks/use-users';
 import { useClassSubjects } from '@/hooks/use-academics';
-import { getCustomSession, generateAdmissionNumber } from '@/lib/auth-utils';
+import { getCustomSession, generateUsernameFromName } from '@/lib/auth-utils';
 import { createStudentByTeacher } from '@/lib/auth-utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,12 +31,14 @@ export default function TeacherStudents() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [usernameManuallyEdited, setUsernameManuallyEdited] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
     full_name: '',
     username: '',
-    password: '',
+    password: 'Student@12',
+    admission_number: '',
     email: '',
     phone_number: '',
     gender: '',
@@ -59,8 +61,9 @@ export default function TeacherStudents() {
   }, [students, search]);
 
   const handleOpenDialog = () => {
+    setUsernameManuallyEdited(false);
     setFormData({
-      full_name: '', username: '', password: '', email: '', phone_number: '',
+      full_name: '', username: '', password: 'Student@12', admission_number: '', email: '', phone_number: '',
       gender: '', class_id: selectedClass || (teacherClasses[0] as any)?.id || '', tier: '', date_of_birth: '',
       parent_name: '', parent_phone: '', parent_email: ''
     });
@@ -83,6 +86,22 @@ export default function TeacherStudents() {
     setFormData(prev => ({ ...prev, class_id: classId, tier: selectedClassObj?.tier || prev.tier }));
   };
 
+  const handleFullNameChange = (fullName: string) => {
+    setFormData(prev => ({ ...prev, full_name: fullName }));
+    // Auto-generate username only if not manually edited
+    if (!usernameManuallyEdited) {
+      const generatedUsername = generateUsernameFromName(fullName);
+      if (generatedUsername) {
+        setFormData(prev => ({ ...prev, username: generatedUsername }));
+      }
+    }
+  };
+
+  const handleUsernameChange = (username: string) => {
+    setFormData(prev => ({ ...prev, username }));
+    setUsernameManuallyEdited(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.class_id || !formData.tier) {
@@ -96,11 +115,14 @@ export default function TeacherStudents() {
 
     setIsCreating(true);
     try {
-      const admission_number = generateAdmissionNumber(formData.tier, students.map(s => s.admission_number));
-      
-      const { data, error } = await createStudentByTeacher({
+      // Normalize blank admission_number to empty string (RPC will handle NULLIF)
+      const submitData = {
         ...formData,
-        admission_number,
+        admission_number: formData.admission_number?.trim() || ''
+      };
+
+      const { error } = await createStudentByTeacher({
+        ...submitData,
         password_hash: formData.password // Hash happens in the server RPC, or via auth-utils wrapper
       });
 
@@ -218,11 +240,15 @@ export default function TeacherStudents() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="full_name">Full Name *</Label>
-                  <Input id="full_name" required value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} />
+                  <Input id="full_name" required value={formData.full_name} onChange={e => handleFullNameChange(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="username">Username *</Label>
-                  <Input id="username" required value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} />
+                  <Input id="username" required value={formData.username} onChange={e => handleUsernameChange(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="admission_number">Admission Number (Optional)</Label>
+                  <Input id="admission_number" value={formData.admission_number} onChange={e => setFormData({...formData, admission_number: e.target.value})} placeholder="Leave blank for auto-assignment" />
                 </div>
                 <div className="space-y-2 relative">
                   <Label htmlFor="password">Initial Password *</Label>

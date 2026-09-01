@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
+import { getCustomSession } from '@/lib/auth-utils';
 
 export interface FinanceStats {
   totalRevenue: number;
@@ -33,21 +34,27 @@ export interface SessionRevenue {
 }
 
 export const useFinanceStats = () => {
+  const session = getCustomSession();
+
   return useQuery({
-    queryKey: ['financeStats'],
+    queryKey: ['financeStats', session?.id],
     queryFn: async () => {
+      if (!session || session.role !== 'accountant' || !session.session_token) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      // Total revenue from fee_payments
-      const { data: totalRevenueData, error: totalRevenueError } = await supabase
-        .from('fee_payments')
-        .select('amount');
+      // Total revenue from fee_payments using secure RPC
+      const { data: feePaymentsData, error: feePaymentsError } = await supabase.rpc('get_accountant_fee_payments', {
+        p_session_token: session.session_token
+      });
 
-      if (totalRevenueError) throw totalRevenueError;
+      if (feePaymentsError) throw feePaymentsError;
 
-      const totalRevenue = totalRevenueData?.reduce((sum, fp) => sum + Number(fp.amount), 0) || 0;
+      const totalRevenue = feePaymentsData?.reduce((sum: number, fp: any) => sum + Number(fp.amount), 0) || 0;
 
       // Revenue this session (current academic session)
       let revenueThisSession = 0;
@@ -59,12 +66,9 @@ export const useFinanceStats = () => {
           .maybeSingle();
 
         if (!sessionError && sessionData) {
-          const { data: sessionRevenueData } = await supabase
-            .from('fee_payments')
-            .select('amount')
-            .eq('term_id', sessionData.id);
-
-          revenueThisSession = sessionRevenueData?.reduce((sum, fp) => sum + Number(fp.amount), 0) || 0;
+          revenueThisSession = feePaymentsData
+            ?.filter((fp: any) => fp.term_id === sessionData.id)
+            .reduce((sum: number, fp: any) => sum + Number(fp.amount), 0) || 0;
         }
       } catch (e) {
         // If session query fails, just skip session revenue
@@ -72,39 +76,35 @@ export const useFinanceStats = () => {
       }
 
       // Revenue this month
-      const { data: monthlyRevenueData } = await supabase
-        .from('fee_payments')
-        .select('amount')
-        .gte('date_paid', startOfMonth.toISOString());
-
-      const revenueThisMonth = monthlyRevenueData?.reduce((sum, fp) => sum + Number(fp.amount), 0) || 0;
+      const revenueThisMonth = feePaymentsData
+        ?.filter((fp: any) => new Date(fp.date_paid) >= startOfMonth)
+        .reduce((sum: number, fp: any) => sum + Number(fp.amount), 0) || 0;
 
       // Revenue today
-      const { data: dailyRevenueData } = await supabase
-        .from('fee_payments')
-        .select('amount')
-        .gte('date_paid', startOfDay.toISOString());
+      const revenueToday = feePaymentsData
+        ?.filter((fp: any) => new Date(fp.date_paid) >= startOfDay)
+        .reduce((sum: number, fp: any) => sum + Number(fp.amount), 0) || 0;
 
-      const revenueToday = dailyRevenueData?.reduce((sum, fp) => sum + Number(fp.amount), 0) || 0;
+      // Payment counts and amounts using secure RPC
+      const { data: submissionsData, error: submissionsError } = await supabase.rpc('get_all_payment_submissions', {
+        p_session_token: session.session_token
+      });
 
-      // Payment counts and amounts
-      const { data: submissionsData } = await supabase
-        .from('payment_submissions')
-        .select('status, amount');
+      if (submissionsError) throw submissionsError;
 
-      const approvedPayments = submissionsData?.filter(s => s.status === 'approved').length || 0;
-      const pendingReviews = submissionsData?.filter(s => s.status === 'pending').length || 0;
-      const rejectedPayments = submissionsData?.filter(s => s.status === 'rejected').length || 0;
+      const approvedPayments = submissionsData?.filter((s: any) => s.status === 'approved').length || 0;
+      const pendingReviews = submissionsData?.filter((s: any) => s.status === 'pending').length || 0;
+      const rejectedPayments = submissionsData?.filter((s: any) => s.status === 'rejected').length || 0;
       const totalTransactions = submissionsData?.length || 0;
 
       // Calculate actual pending and rejected amounts
       const pendingAmount = submissionsData
-        ?.filter(s => s.status === 'pending')
-        .reduce((sum, s) => sum + Number(s.amount), 0) || 0;
+        ?.filter((s: any) => s.status === 'pending')
+        .reduce((sum: number, s: any) => sum + Number(s.amount), 0) || 0;
 
       const rejectedAmount = submissionsData
-        ?.filter(s => s.status === 'rejected')
-        .reduce((sum, s) => sum + Number(s.amount), 0) || 0;
+        ?.filter((s: any) => s.status === 'rejected')
+        .reduce((sum: number, s: any) => sum + Number(s.amount), 0) || 0;
 
       return {
         totalRevenue,
@@ -118,23 +118,26 @@ export const useFinanceStats = () => {
         pendingAmount,
         rejectedAmount,
       } as FinanceStats;
-    }
+    },
+    enabled: !!session && session.role === 'accountant' && !!session.session_token
   });
 };
 
 export const useMonthlyRevenue = (year?: number) => {
-  return useQuery({
-    queryKey: ['monthlyRevenue', year],
-    queryFn: async () => {
-      const currentYear = year || new Date().getFullYear();
-      const startDate = new Date(currentYear, 0, 1);
-      const endDate = new Date(currentYear + 1, 0, 1);
+  const session = getCustomSession();
 
-      const { data, error } = await supabase
-        .from('fee_payments')
-        .select('date_paid, amount')
-        .gte('date_paid', startDate.toISOString())
-        .lt('date_paid', endDate.toISOString());
+  return useQuery({
+    queryKey: ['monthlyRevenue', year, session?.id],
+    queryFn: async () => {
+      if (!session || session.role !== 'accountant' || !session.session_token) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
+      const currentYear = year || new Date().getFullYear();
+
+      const { data, error } = await supabase.rpc('get_accountant_fee_payments', {
+        p_session_token: session.session_token
+      });
 
       if (error) throw error;
 
@@ -144,7 +147,7 @@ export const useMonthlyRevenue = (year?: number) => {
         revenue: 0,
       }));
 
-      data?.forEach((fp) => {
+      data?.forEach((fp: any) => {
         const date = new Date(fp.date_paid);
         if (date.getFullYear() === currentYear) {
           const monthIndex = date.getMonth();
@@ -153,23 +156,30 @@ export const useMonthlyRevenue = (year?: number) => {
       });
 
       return monthlyData;
-    }
+    },
+    enabled: !!session && session.role === 'accountant' && !!session.session_token
   });
 };
 
 export const usePaymentMethodBreakdown = () => {
+  const session = getCustomSession();
+
   return useQuery({
-    queryKey: ['paymentMethodBreakdown'],
+    queryKey: ['paymentMethodBreakdown', session?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('payment_submissions')
-        .select('payment_method, amount, status');
+      if (!session || session.role !== 'accountant' || !session.session_token) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
+      const { data, error } = await supabase.rpc('get_all_payment_submissions', {
+        p_session_token: session.session_token
+      });
 
       if (error) throw error;
 
       const breakdown: Record<string, { count: number; amount: number }> = {};
 
-      data?.forEach((submission) => {
+      data?.forEach((submission: any) => {
         const method = submission.payment_method;
         if (!breakdown[method]) {
           breakdown[method] = { count: 0, amount: 0 };
@@ -183,29 +193,39 @@ export const usePaymentMethodBreakdown = () => {
         count: data.count,
         amount: data.amount,
       })) as PaymentMethodBreakdown[];
-    }
+    },
+    enabled: !!session && session.role === 'accountant' && !!session.session_token
   });
 };
 
 export const useSessionRevenue = () => {
+  const session = getCustomSession();
+
   return useQuery({
-    queryKey: ['sessionRevenue'],
+    queryKey: ['sessionRevenue', session?.id],
     queryFn: async () => {
+      if (!session || session.role !== 'accountant' || !session.session_token) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
       const { data: sessions, error: sessionsError } = await supabase
         .from('academic_sessions')
         .select('id, name');
 
       if (sessionsError) throw sessionsError;
 
+      const { data: feePayments, error: feePaymentsError } = await supabase.rpc('get_accountant_fee_payments', {
+        p_session_token: session.session_token
+      });
+
+      if (feePaymentsError) throw feePaymentsError;
+
       const sessionRevenue: SessionRevenue[] = [];
 
       for (const session of sessions || []) {
-        const { data: payments } = await supabase
-          .from('fee_payments')
-          .select('amount')
-          .eq('term_id', session.id);
-
-        const revenue = payments?.reduce((sum, fp) => sum + Number(fp.amount), 0) || 0;
+        const revenue = feePayments
+          ?.filter((fp: any) => fp.term_id === session.id)
+          .reduce((sum: number, fp: any) => sum + Number(fp.amount), 0) || 0;
 
         sessionRevenue.push({
           sessionId: session.id,
@@ -215,6 +235,7 @@ export const useSessionRevenue = () => {
       }
 
       return sessionRevenue.sort((a, b) => b.revenue - a.revenue);
-    }
+    },
+    enabled: !!session && session.role === 'accountant' && !!session.session_token
   });
 };

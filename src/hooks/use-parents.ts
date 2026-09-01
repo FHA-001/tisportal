@@ -286,9 +286,33 @@ export const useRemoveStudentFromParent = () => {
 };
 
 export const useFeePayments = (studentId?: string) => {
+  const session = getCustomSession();
+  const isParent = session?.role === 'parent';
+
   return useQuery({
-    queryKey: ['feePayments', studentId],
+    queryKey: ['feePayments', studentId, isParent ? session.id : null],
     queryFn: async () => {
+      // Parent uses secure RPC
+      if (isParent) {
+        if (!session || !session.session_token) {
+          throw new Error('Session expired or invalid. Please log in again.');
+        }
+
+        const { data, error } = await supabase.rpc('get_parent_fee_payments', {
+          p_session_token: session.session_token
+        });
+
+        if (error) throw error;
+
+        // Filter by student_id if provided (client-side filtering for UI convenience)
+        if (studentId) {
+          return data?.filter((fp: any) => fp.student_id === studentId) || [];
+        }
+
+        return data;
+      }
+
+      // Admin uses direct table access (to be secured in B5B/B5C)
       let query = supabase
         .from('fee_payments')
         .select(`
@@ -296,11 +320,11 @@ export const useFeePayments = (studentId?: string) => {
           students (full_name, admission_number)
         `)
         .order('date_paid', { ascending: false });
-      
+
       if (studentId) {
         query = query.eq('student_id', studentId);
       }
-      
+
       const { data, error } = await query;
       if (error) throw error;
       return data;
@@ -310,26 +334,29 @@ export const useFeePayments = (studentId?: string) => {
 };
 
 export const useStudentFeeSummary = (studentId?: string, termId?: string, className?: string) => {
+  const session = getCustomSession();
+  const isParent = session?.role === 'parent';
+
   return useQuery({
-    queryKey: ['studentFeeSummary', studentId, termId, className],
+    queryKey: ['studentFeeSummary', studentId, termId, className, isParent ? session.id : null],
     queryFn: async () => {
       if (!studentId || !termId) return null;
-      
+
       // Normalize class name by removing spaces for matching
       const normalizedClassName = className?.replace(/\s+/g, '');
-      
+
       // Get fee amount from school_fees based on class name and academic session
       let schoolFee = null;
       let feeError = null;
-      
+
       // First try with academic session
-      const { data: feeWithSession, error: errorWithSession } = await supabase
+      const { data: feeWithSession } = await supabase
         .from('school_fees')
         .select('fee_amount')
         .eq('class_name', normalizedClassName)
         .eq('academic_session_id', termId)
         .maybeSingle();
-      
+
       if (feeWithSession) {
         schoolFee = feeWithSession;
       } else {
@@ -339,26 +366,48 @@ export const useStudentFeeSummary = (studentId?: string, termId?: string, classN
           .select('fee_amount')
           .eq('class_name', normalizedClassName)
           .maybeSingle();
-        
+
         schoolFee = feeWithoutSession;
         feeError = errorWithoutSession;
       }
-      
+
       if (feeError && feeError.code !== 'PGRST116') throw feeError;
-      
+
       // Get total payments for the term
-      const { data: payments, error: paymentsError } = await supabase
-        .from('fee_payments')
-        .select('amount')
-        .eq('student_id', studentId)
-        .eq('term_id', termId);
-      
-      if (paymentsError) throw paymentsError;
-      
+      let totalPaid = 0;
+
+      if (isParent) {
+        // Parent uses secure RPC
+        if (!session || !session.session_token) {
+          throw new Error('Session expired or invalid. Please log in again.');
+        }
+
+        const { data: feePayments, error: paymentsError } = await supabase.rpc('get_parent_fee_payments', {
+          p_session_token: session.session_token
+        });
+
+        if (paymentsError) throw paymentsError;
+
+        // Filter by student_id and term_id
+        totalPaid = feePayments
+          ?.filter((fp: any) => fp.student_id === studentId && fp.term_id === termId)
+          .reduce((sum: number, p: any) => sum + parseFloat(p.amount), 0) || 0;
+      } else {
+        // Admin uses direct table access (to be secured in B5B/B5C)
+        const { data: payments, error: paymentsError } = await supabase
+          .from('fee_payments')
+          .select('amount')
+          .eq('student_id', studentId)
+          .eq('term_id', termId);
+
+        if (paymentsError) throw paymentsError;
+
+        totalPaid = payments?.reduce((sum, p) => sum + parseFloat(p.amount), 0) || 0;
+      }
+
       const totalFees = schoolFee?.fee_amount || 0;
-      const totalPaid = payments?.reduce((sum, p) => sum + parseFloat(p.amount), 0) || 0;
       const outstanding = totalFees - totalPaid;
-      
+
       return {
         total_fees: totalFees,
         total_paid: totalPaid,
@@ -632,19 +681,10 @@ export const useParentPaymentHistory = (statusFilter?: string, sessionFilter?: s
         throw new Error('Session expired or invalid. Please log in again.');
       }
 
-      const parentId = session.id;
-
-      // Fetch payment submissions
-      const { data: submissions, error: submissionsError } = await supabase
-        .from('payment_submissions')
-        .select(`
-          *,
-          students!inner(full_name, admission_number),
-          parents!inner(full_name, email),
-          academic_sessions!inner(name)
-        `)
-        .eq('parent_id', parentId)
-        .order('created_at', { ascending: false });
+      // Fetch payment submissions using secure RPC
+      const { data: submissions, error: submissionsError } = await supabase.rpc('get_parent_payment_submissions', {
+        p_session_token: session.session_token
+      });
 
       if (submissionsError) throw submissionsError;
 
@@ -653,13 +693,13 @@ export const useParentPaymentHistory = (statusFilter?: string, sessionFilter?: s
         id: item.id,
         type: 'submission' as const,
         student_id: item.student_id,
-        student_name: item.students.full_name,
-        student_admission_number: item.students.admission_number,
+        student_name: item.student_name,
+        student_admission_number: item.student_admission_number,
         parent_id: item.parent_id,
-        parent_name: item.parents.full_name,
-        parent_email: item.parents.email,
+        parent_name: item.parent_name,
+        parent_email: item.parent_email,
         academic_session_id: item.academic_session_id,
-        academic_session_name: item.academic_sessions.name,
+        academic_session_name: item.academic_session_name,
         amount: item.amount,
         payment_date: item.payment_date,
         payment_reference: item.payment_reference,
@@ -676,61 +716,40 @@ export const useParentPaymentHistory = (statusFilter?: string, sessionFilter?: s
         fee_payment_id: null
       }));
 
-      // Fetch fee payments for this parent's children using secure RPC
-      const { data: children, error: childrenError } = await supabase.rpc('get_parent_children', {
+      // Fetch fee payments using secure RPC
+      const { data: feePayments, error: feePaymentsError } = await supabase.rpc('get_parent_fee_payments', {
         p_session_token: session.session_token
       });
-
-      if (childrenError) throw childrenError;
-
-      const studentIds = children?.map((child: any) => child.student_id) || [];
-
-      const { data: feePayments, error: feePaymentsError } = await supabase
-        .from('fee_payments')
-        .select(`
-          *,
-          students!inner(full_name, admission_number),
-          academic_sessions!inner(name),
-          payment_submissions!inner(
-            parent_id,
-            parents!inner(full_name, email),
-            proof_url
-          )
-        `)
-        .in('student_id', studentIds)
-        .order('date_paid', { ascending: false });
 
       if (feePaymentsError) throw feePaymentsError;
 
       // Transform fee payments to payment history items
-      const paymentItems: PaymentHistoryItem[] = (feePayments || [])
-        .filter((fp: any) => fp.payment_submissions?.parent_id === parentId)
-        .map((item: any) => ({
-          id: item.id,
-          type: 'payment' as const,
-          student_id: item.student_id,
-          student_name: item.students.full_name,
-          student_admission_number: item.students.admission_number,
-          parent_id: item.payment_submissions.parent_id,
-          parent_name: item.payment_submissions.parents.full_name,
-          parent_email: item.payment_submissions.parents.email,
-          academic_session_id: item.term_id,
-          academic_session_name: item.academic_sessions.name,
-          amount: item.amount,
-          payment_date: item.date_paid,
-          payment_reference: item.reference_note,
-          payment_method: item.payment_method,
-          bank_name: null,
-          proof_url: item.payment_submissions.proof_url,
-          status: 'approved',
-          accountant_remarks: null,
-          reviewed_by: item.recorded_by,
-          reviewed_at: item.date_paid,
-          created_at: item.created_at,
-          updated_at: item.updated_at,
-          receipt_number: item.receipt_number,
-          fee_payment_id: item.id
-        }));
+      const paymentItems: PaymentHistoryItem[] = (feePayments || []).map((item: any) => ({
+        id: item.id,
+        type: 'payment' as const,
+        student_id: item.student_id,
+        student_name: item.student_name,
+        student_admission_number: item.student_admission_number,
+        parent_id: item.parent_id,
+        parent_name: item.parent_name,
+        parent_email: item.parent_email,
+        academic_session_id: item.term_id,
+        academic_session_name: item.academic_session_name,
+        amount: item.amount,
+        payment_date: item.date_paid,
+        payment_reference: item.reference_note,
+        payment_method: item.payment_method,
+        bank_name: null,
+        proof_url: item.proof_url,
+        status: 'approved',
+        accountant_remarks: null,
+        reviewed_by: item.recorded_by,
+        reviewed_at: item.date_paid,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+        receipt_number: item.receipt_number,
+        fee_payment_id: item.id
+      }));
 
       // Combine and sort by date
       const combined = [...submissionItems, ...paymentItems].sort((a, b) => 

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+import { getCustomSession } from '@/lib/auth-utils';
 
 // --- STUDENTS ---
 export const useStudents = () => {
@@ -62,6 +63,115 @@ export const useSaveGrades = () => {
       toast.success('Grades saved successfully');
     },
     onError: (err: any) => toast.error(err.message)
+  });
+};
+
+// --- SECURE STUDENT GRADES ---
+export const useStudentGrades = (filters?: { term?: string; session?: string }) => {
+  const session = getCustomSession();
+
+  return useQuery({
+    queryKey: ['student-grades', session?.id, filters],
+    queryFn: async () => {
+      if (!session?.session_token || session?.role !== 'student') {
+        return [];
+      }
+
+      const { data, error } = await supabase.rpc('get_student_grades', {
+        p_session_token: session.session_token,
+        p_term: filters?.term || null,
+        p_session: filters?.session || null
+      });
+
+      if (error) throw error;
+
+      // Map flat RPC response back to nested Supabase relationship shape
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        student_id: row.student_id,
+        class_subject_id: row.class_subject_id,
+        term: row.term,
+        session: row.session,
+        test_1: row.test_1,
+        test_2: row.test_2,
+        project_1: row.project_1,
+        assignment_1: row.assignment_1,
+        exam: row.exam,
+        total: row.total,
+        grade_letter: row.grade_letter,
+        remark: row.remark,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        class_subjects: {
+          subject_id: row.class_subject_subject_id,
+          class_id: row.class_subject_class_id,
+          subjects: {
+            name: row.subject_name,
+            code: row.subject_code
+          },
+          classes: row.class_subject_class_name ? {
+            name: row.class_subject_class_name,
+            tier: row.class_subject_class_tier
+          } : null
+        }
+      }));
+    },
+    enabled: !!session?.session_token && session?.role === 'student'
+  });
+};
+
+// --- SECURE PARENT CHILD GRADES ---
+export const useParentChildGrades = (studentId?: string, filters?: { term?: string; session?: string }) => {
+  const session = getCustomSession();
+
+  return useQuery({
+    queryKey: ['parent-child-grades', session?.id, studentId, filters],
+    queryFn: async () => {
+      if (!session?.session_token || session?.role !== 'parent' || !studentId) {
+        return [];
+      }
+
+      const { data, error } = await supabase.rpc('get_parent_child_grades', {
+        p_session_token: session.session_token,
+        p_student_id: studentId,
+        p_term: filters?.term || null,
+        p_session: filters?.session || null
+      });
+
+      if (error) throw error;
+
+      // Map flat RPC response back to nested Supabase relationship shape
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        student_id: row.student_id,
+        class_subject_id: row.class_subject_id,
+        term: row.term,
+        session: row.session,
+        test_1: row.test_1,
+        test_2: row.test_2,
+        project_1: row.project_1,
+        assignment_1: row.assignment_1,
+        exam: row.exam,
+        total: row.total,
+        grade_letter: row.grade_letter,
+        remark: row.remark,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        class_subjects: {
+          subject_id: row.class_subject_subject_id,
+          class_id: row.class_subject_class_id,
+          subjects: {
+            name: row.subject_name,
+            code: row.subject_code
+          },
+          classes: row.class_subject_class_name ? {
+            name: row.class_subject_class_name,
+            tier: row.class_subject_class_tier
+          } : null
+        }
+      }));
+    },
+    enabled: !!session?.session_token && session?.role === 'parent' && !!studentId
   });
 };
 

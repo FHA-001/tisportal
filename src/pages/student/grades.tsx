@@ -6,12 +6,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { useGrades } from '@/hooks/use-records';
+import { useStudentGrades } from '@/hooks/use-records';
 import { useAcademicSessions } from '@/hooks/use-academics';
 import { getCustomSession } from '@/lib/auth-utils';
 import { generateReportCardPdf, buildReportCardDoc } from '@/lib/reportCardPdf';
-import { computeClassRankings } from '@/lib/reportCardData';
-import { supabase } from '@/lib/supabaseClient';
 import { Download, Loader2, Award, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { SCHOOL_CONFIG } from '@/lib/app-config';
@@ -23,8 +21,7 @@ export default function StudentGrades() {
 
   const [selectedTerm, setSelectedTerm] = useState<string>(activeSession?.current_term || 'First Term');
 
-  const { data: grades = [], isLoading } = useGrades({
-    student_id: session?.id,
+  const { data: grades = [], isLoading } = useStudentGrades({
     term: selectedTerm,
     session: activeSession?.name
   });
@@ -50,16 +47,6 @@ export default function StudentGrades() {
 
     try {
       toast.loading('Generating report card...', { id: 'pdf-gen' });
-
-      const classId = session.class_id;
-      let rankings: Awaited<ReturnType<typeof computeClassRankings>> | null = null;
-      if (classId && activeSession?.name) {
-        try {
-          rankings = await computeClassRankings(classId, selectedTerm, activeSession.name);
-        } catch {
-          rankings = null;
-        }
-      }
 
       const pdfGrades = grades.map(g => ({
         subject: g.class_subjects?.subjects?.name || 'Unknown',

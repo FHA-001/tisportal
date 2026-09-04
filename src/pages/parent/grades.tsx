@@ -6,17 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useParentChildren } from '@/hooks/use-parents';
-import { useGrades } from '@/hooks/use-records';
-import { getCustomSession } from '@/lib/auth-utils';
+import { useParentChildGrades } from '@/hooks/use-records';
 import { generateReportCardPdf, buildReportCardDoc } from '@/lib/reportCardPdf';
 import { Award, Loader2, ChevronDown, User, Download, Printer } from 'lucide-react';
 import { getGradeLetter, getGradeRemark } from '@/lib/auth-utils';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabaseClient';
-import { SCHOOL_CONFIG } from '@/lib/app-config';
 
 export default function ParentGrades() {
-  const session = getCustomSession();
   const { data: children = [], isLoading: childrenLoading } = useParentChildren();
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [selectedTerm, setSelectedTerm] = useState<string>('First Term');
@@ -29,9 +25,10 @@ export default function ParentGrades() {
     setSelectedChildId(children[0].students.id);
   }
 
-  const { data: grades = [], isLoading: gradesLoading } = useGrades({
-    student_id: selectedChildId
-  });
+  const { data: grades = [], isLoading: gradesLoading } = useParentChildGrades(
+    selectedChildId,
+    { term: selectedTerm }
+  );
 
   const handleDownloadPdf = async () => {
     if (!selectedChild || !selectedChild.students || grades.length === 0) {
@@ -42,9 +39,7 @@ export default function ParentGrades() {
     try {
       toast.loading('Generating report card...', { id: 'pdf-gen' });
 
-      const classId = selectedChild.students.class_id;
-
-      const pdfGrades = grades.map(g => ({
+      const pdfGrades = grades.map((g: any) => ({
         subject: g.class_subjects?.subjects?.name || 'Unknown',
         test_1: g.test_1,
         test_2: g.test_2,
@@ -82,7 +77,7 @@ export default function ParentGrades() {
     try {
       toast.loading('Generating report card for printing...', { id: 'pdf-print' });
 
-      const pdfGrades = grades.map(g => ({
+      const pdfGrades = grades.map((g: any) => ({
         subject: g.class_subjects?.subjects?.name || 'Unknown',
         test_1: g.test_1,
         test_2: g.test_2,

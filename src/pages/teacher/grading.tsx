@@ -4,7 +4,7 @@ import { CustomSessionGuard } from '@/components/shared/custom-session-guard';
 import { PageHeader } from '@/components/shared/page-header';
 import { useClassSubjects, useAcademicSessions } from '@/hooks/use-academics';
 import { useStudents } from '@/hooks/use-users';
-import { useGrades, useSaveGrades } from '@/hooks/use-records';
+import { useTeacherGrades, useSaveTeacherGrades } from '@/hooks/use-records';
 import { getCustomSession, getGradeLetter, getGradeRemark, computeTotal, getMaxScores } from '@/lib/auth-utils';
 import { generateReportCardPdf } from '@/lib/reportCardPdf';
 import { validateGradeData } from '@/lib/validation';
@@ -35,14 +35,13 @@ export default function TeacherGrading() {
   const selectedClass = targetAssignment?.class_id;
 
   const { data: students = [], isLoading: loadingStudents } = useStudents('teacher', selectedClass);
-  
-  const { data: grades = [], isLoading: loadingGrades } = useGrades({
-    class_subject_id: selectedAssignmentId,
-    term: selectedTerm,
-    session: activeSession?.name
-  });
-  
-  const saveGrades = useSaveGrades();
+
+  const { data: grades = [], isLoading: loadingGrades } = useTeacherGrades(
+    selectedAssignmentId,
+    { term: selectedTerm, session: activeSession?.name }
+  );
+
+  const saveGrades = useSaveTeacherGrades();
 
   // Local editing state
   const [localGrades, setLocalGrades] = useState<Record<string, any>>({});

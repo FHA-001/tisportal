@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '@/components/shared/dashboard-layout';
 import { CustomSessionGuard } from '@/components/shared/custom-session-guard';
 import { PageHeader } from '@/components/shared/page-header';
@@ -46,7 +46,30 @@ export default function TeacherGrading() {
   // Local editing state
   const [localGrades, setLocalGrades] = useState<Record<string, any>>({});
 
-  // Sync server data to local state when class/term changes
+  // Create stable signatures to detect actual data changes, not just array reference changes
+  const studentSignature = useMemo(() => {
+    return students
+      .map(s => s.id)
+      .sort()
+      .join(',');
+  }, [students]);
+
+  const gradeSignature = useMemo(() => {
+    return grades
+      .map(g => JSON.stringify({
+        id: g.id,
+        student_id: g.student_id,
+        test_1: g.test_1,
+        test_2: g.test_2,
+        project_1: g.project_1,
+        assignment_1: g.assignment_1,
+        exam: g.exam
+      }))
+      .sort()
+      .join('|');
+  }, [grades]);
+
+  // Sync server data to local state when actual data changes (not just array references)
   useEffect(() => {
     if (students.length > 0) {
       const newLocal: Record<string, any> = {};
@@ -66,7 +89,7 @@ export default function TeacherGrading() {
     } else {
       setLocalGrades({});
     }
-  }, [students, grades]);
+  }, [selectedAssignmentId, selectedTerm, activeSession?.name, studentSignature, gradeSignature]);
 
   const handleScoreChange = (studentId: string, field: string, val: string) => {
     const numVal = val === '' ? '' : Number(val);

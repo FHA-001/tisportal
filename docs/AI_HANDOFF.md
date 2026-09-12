@@ -750,3 +750,154 @@ The verification file is now complete and structurally correct with all four fin
 
 **NO SQL applied to live database.**
 **NO commit/push performed.**
+
+## B6A-3 GRADES TABLE LOCKDOWN AUDIT
+
+### B6A-2 FULLY COMPLETE
+- B6A-2 Teacher grade access security fully implemented
+- Grade integrity migration (20240828) manually applied successfully
+- All 18 structural verification checks passed
+- Full Teacher/Student/Parent/Admin grade regression passed
+- Corrective commit/push completed
+- Working tree clean
+
+### ATTENDANCE FEATURE SKIPPED
+Attendance feature has been removed from the product.
+No dedicated Attendance security phase will be implemented.
+
+### B6A-3 CURRENT TASK: AUDIT BEFORE LOCKDOWN
+
+**DO NOT modify SQL yet. DO NOT apply SQL. DO NOT commit/push.**
+
+User manually applies all Supabase SQL after ChatGPT review.
+
+### STEP 1: REPO AUDIT COMPLETE
+
+**Migration files touching grades:**
+1. `000_base_schema.sql` - Base grades table creation
+2. `20240720_security_rls.sql` - Original comprehensive RLS policies (Admin full access, Teacher/Student/Parent role-based access)
+3. `20240720_security_rls_simple.sql` - Simplified RLS (authenticated users only)
+4. `20240827_secure_student_parent_grade_reads.sql` - B6A-1: Secure RPCs for Student/Parent grade reads
+5. `20240827_secure_teacher_grade_access.sql` - B6A-2: Secure RPCs for Teacher grade operations
+6. `20240828_fix_grade_duplicates_and_integrity.sql` - Grade integrity fix with unique constraint
+7. `verify_grade_integrity_fix.sql` - READ-ONLY verification (already applied successfully)
+
+**Application code direct grades access:**
+
+**Admin direct SELECT (STILL REQUIRED):**
+- `src/hooks/use-records.ts` line 29: `useGrades()` hook - direct SELECT for Admin
+- `src/pages/admin/grades.tsx` line 53: Direct SELECT for report card PDF generation
+- `src/lib/reportCardData.ts` line 37: Direct SELECT for class rankings computation
+
+**Teacher direct access (RPC-ONLY - COMPLETE):**
+- `src/hooks/use-records.ts` line 173: `useTeacherGrades()` uses `get_teacher_grades` RPC ✅
+- `src/hooks/use-records.ts` line 220: `useSaveTeacherGrades()` uses `save_teacher_grades` RPC ✅
+- `src/pages/teacher/grading.tsx` line 39: Uses `useTeacherGrades()` RPC ✅
+- NO direct Teacher INSERT/UPDATE/DELETE on grades table ✅
+
+**Student direct access (RPC-ONLY - COMPLETE):**
+- `src/hooks/use-records.ts` line 64: `useStudentGrades()` uses `get_student_grades` RPC ✅
+- `src/pages/student/grades.tsx` line 24: Uses `useStudentGrades()` RPC ✅
+- NO direct Student SELECT on grades table ✅
+
+**Parent direct access (RPC-ONLY - COMPLETE):**
+- `src/hooks/use-records.ts` line 118: `useParentChildGrades()` uses `get_parent_child_grades` RPC ✅
+- `src/pages/parent/grades.tsx` line 28: Uses `useParentChildGrades()` RPC ✅
+- NO direct Parent SELECT on grades table ✅
+
+**Accountant direct access (NONE - CORRECT):**
+- No Accountant grade access found in application code ✅
+- Accountant role is finance-only, no grade operations ✅
+
+### STEP 2: LIVE AUDIT SQL PREPARED
+
+**READ-ONLY audit SQL created:** `supabase/migrations/audit_grades_lockdown.sql`
+
+This SQL reports:
+1. RLS enabled status on public.grades
+2. All RLS policies on public.grades (policy name, command, roles, USING/WITH CHECK expressions)
+3. Table grants on public.grades for PUBLIC, anon, authenticated, service_role
+4. Column grants if any
+5. Table ownership
+6. Views/functions that depend on or expose grades
+7. RPC functions that access grades (with security definer/invoker status)
+8. RPC function execute grants
+
+**User must run this audit SQL manually in Supabase SQL Editor.**
+
+### STEP 3: PROPOSED B6A-3 LOCKDOWN PLAN (PENDING AUDIT RESULTS)
+
+**Target security model (based on repo audit):**
+
+**RLS Enabled.**
+
+**Admin:**
+- Keep direct SELECT for Admin UI (useGrades hook, report card generation, rankings)
+- Add one trusted-Admin SELECT policy using `SELECT public.is_admin()`
+- Remove permissive legacy Admin policies if they exist
+- NO direct Admin INSERT/UPDATE/DELETE (not used in application)
+
+**Teacher:**
+- Already RPC-only (B6A-2 complete)
+- Revoke all direct table access
+- RLS should block any direct table access attempts
+- Continue through SECURITY DEFINER RPCs only
+
+**Student:**
+- Already RPC-only (B6A-1 complete)
+- Revoke all direct table access
+- RLS should block any direct table access attempts
+- Continue through SECURITY DEFINER RPC only
+
+**Parent:**
+- Already RPC-only (B6A-1 complete)
+- Revoke all direct table access
+- RLS should block any direct table access attempts
+- Continue through SECURITY DEFINER RPC only
+
+**Generic anon/authenticated:**
+- Must not be able to bypass RPC model
+- Revoke all direct table access
+
+**service_role/postgres:**
+- Retain required privileged backend access
+
+### STEP 4: RPC DEPENDENCY CHECK (FROM MIGRATION FILES)
+
+**These RPCs are SECURITY DEFINER and therefore do not depend on caller table privileges:**
+
+1. `public.get_student_grades(TEXT, TEXT, TEXT)` - SECURITY DEFINER, empty search_path, anon execute, authenticated blocked ✅
+2. `public.get_parent_child_grades(TEXT, UUID, TEXT, TEXT)` - SECURITY DEFINER, empty search_path, anon execute, authenticated blocked ✅
+3. `public.get_teacher_grades(TEXT, UUID, TEXT, TEXT)` - SECURITY DEFINER, empty search_path, anon execute, authenticated blocked ✅
+4. `public.save_teacher_grades(TEXT, JSONB)` - SECURITY DEFINER, empty search_path, anon execute, authenticated blocked ✅
+
+**These RPCs will continue to work if direct grades table grants are removed.**
+
+### CURRENT BLOCKER
+
+Awaiting user to run `audit_grades_lockdown.sql` in Supabase SQL Editor and return results.
+
+The audit will reveal:
+- Current live RLS policies (may differ from migration files)
+- Current live table grants (may differ from migration files)
+- Any unexpected dependencies or exposures
+- Exact current state before lockdown migration
+
+### NEXT AFTER AUDIT
+
+Once user returns live audit results:
+1. Compare live state vs migration file expectations
+2. Adjust proposed lockdown plan based on actual live state
+3. Create minimal B6A-3 lockdown migration
+4. Prepare verification SQL
+5. User manually applies migration
+6. Run verification to confirm lockdown
+7. Test all role UIs for regressions
+
+### CONFIRMATION
+
+- NO SQL applied yet
+- NO migration created yet
+- NO commit/push performed
+- Only audit SQL prepared for manual execution
+- Awaiting live Supabase audit results

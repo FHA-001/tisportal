@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/shared/dashboard-layout';
 import { CustomSessionGuard } from '@/components/shared/custom-session-guard';
 import { PageHeader } from '@/components/shared/page-header';
@@ -19,9 +19,8 @@ import {
   X
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useHomework, useCreateHomework, useUpdateHomework, useDeleteHomework } from '@/hooks/use-homework';
+import { useHomework, useTeacherHomeworkAssignments, useCreateHomework, useUpdateHomework, useDeleteHomework } from '@/hooks/use-homework';
 import { getCustomSession } from '@/lib/auth-utils';
-import { useClasses, useSubjects, useClassSubjects } from '@/hooks/use-academics';
 import { format } from 'date-fns';
 
 export default function TeacherHomework() {
@@ -31,9 +30,7 @@ export default function TeacherHomework() {
   const updateHomework = useUpdateHomework();
   const deleteHomework = useDeleteHomework();
 
-  const { data: classes = [] } = useClasses();
-  const { data: subjects = [] } = useSubjects();
-  const { data: assignments = [] } = useClassSubjects(undefined, session?.id);
+  const { data: assignments = [] } = useTeacherHomeworkAssignments();
 
   const [showForm, setShowForm] = useState(false);
   const [editingHomework, setEditingHomework] = useState<any>(null);
@@ -95,11 +92,38 @@ export default function TeacherHomework() {
     setEditingHomework(null);
   };
 
-  // Filter classes and subjects based on teacher's assignments
-  const assignedClassIds = new Set(assignments.map(a => a.class_id));
-  const assignedSubjectIds = new Set(assignments.map(a => a.subject_id));
-  const availableClasses = classes.filter(c => assignedClassIds.has(c.id));
-  const availableSubjects = subjects.filter(s => assignedSubjectIds.has(s.id));
+  const availableClasses = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; tier: string | null }>();
+    assignments.forEach((assignment) => {
+      if (!map.has(assignment.class_id)) {
+        map.set(assignment.class_id, {
+          id: assignment.class_id,
+          name: assignment.class_name,
+          tier: assignment.class_tier
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [assignments]);
+
+  const availableSubjects = useMemo(() => {
+    if (!formData.class_id) return [];
+    return assignments
+      .filter((assignment) => assignment.class_id === formData.class_id)
+      .map((assignment) => ({ id: assignment.subject_id, name: assignment.subject_name }))
+      .filter((subject, index, items) => items.findIndex((item) => item.id === subject.id) === index);
+  }, [assignments, formData.class_id]);
+
+  const handleClassChange = (classId: string) => {
+    const subjectStillValid = assignments.some(
+      (assignment) => assignment.class_id === classId && assignment.subject_id === formData.subject_id
+    );
+    setFormData({
+      ...formData,
+      class_id: classId,
+      subject_id: subjectStillValid ? formData.subject_id : ''
+    });
+  };
 
   return (
     <CustomSessionGuard role="teacher">
@@ -133,7 +157,7 @@ export default function TeacherHomework() {
                     <select
                       id="class"
                       value={formData.class_id}
-                      onChange={(e) => setFormData({ ...formData, class_id: e.target.value })}
+                      onChange={(e) => handleClassChange(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg border border-input bg-background"
                       required
                     >
@@ -151,9 +175,10 @@ export default function TeacherHomework() {
                       onChange={(e) => setFormData({ ...formData, subject_id: e.target.value })}
                       className="w-full px-3 py-2 rounded-lg border border-input bg-background"
                       required
+                      disabled={!formData.class_id}
                     >
-                      <option value="">Select a subject</option>
-                      {availableSubjects.map((s: any) => (
+                      <option value="">{formData.class_id ? 'Select a subject' : 'Select a class first'}</option>
+                      {availableSubjects.map((s) => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
                     </select>

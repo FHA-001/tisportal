@@ -901,3 +901,211 @@ Once user returns live audit results:
 - NO commit/push performed
 - Only audit SQL prepared for manual execution
 - Awaiting live Supabase audit results
+
+## HOMEWORK SECURITY AUDIT
+
+### B6A-3 GRADES LOCKDOWN COMPLETE
+- B6A-3 grades table lockdown migration created
+- 19/19 structural verification checks passed
+- Full grade UI regression passed
+- Grades table locked down to Admin SELECT only
+- Teacher/Student/Parent use RPC-only model
+- Attendance dedicated phase SKIPPED (feature removed)
+
+### HOMEWORK SECURITY CURRENT TASK: AUDIT BEFORE IMPLEMENTATION
+
+**DO NOT apply SQL. DO NOT create or modify live database objects. DO NOT commit/push.**
+
+User manually runs all Supabase SQL after ChatGPT review.
+
+### STEP 1: REPOSITORY AUDIT COMPLETE
+
+**Homework table schema (from 20240716_homework.sql):**
+- Table name: `public.homework`
+- Columns:
+  - `id` UUID PRIMARY KEY
+  - `title` TEXT NOT NULL
+  - `description` TEXT NOT NULL
+  - `class_id` UUID NOT NULL (FK to classes)
+  - `subject_id` UUID NOT NULL (FK to subjects)
+  - `teacher_id` UUID NOT NULL (FK to teachers)
+  - `published_at` TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  - `due_date` DATE NOT NULL
+  - `attachment_url` TEXT
+  - `created_at` TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  - `updated_at` TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+
+**Original RLS policies (from 20240716_homework.sql):**
+- "Teachers can insert their homework" - INSERT with `teacher_id = auth.uid()`
+- "Teachers can update their homework" - UPDATE with `teacher_id = auth.uid()`
+- "Teachers can delete their homework" - DELETE with `teacher_id = auth.uid()`
+- "Teachers can view their homework" - SELECT with `teacher_id = auth.uid()`
+- "Students can view their class homework" - SELECT with `class_id IN (SELECT class_id FROM students WHERE id = auth.uid())`
+- "Admins can view all homework" - SELECT with `true`
+- "Admins can insert homework" - INSERT with `true`
+- "Admins can update homework" - UPDATE with `true`
+- "Admins can delete homework" - DELETE with `true`
+
+**Application code direct homework access:**
+
+**Teacher direct access (CURRENTLY INSECURE):**
+- `src/hooks/use-homework.ts` line 10: `useHomework()` - direct SELECT with `teacher_id` filter ❌
+- `src/hooks/use-homework.ts` line 75: `useCreateHomework()` - direct INSERT ❌
+- `src/hooks/use-homework.ts` line 96: `useUpdateHomework()` - direct UPDATE ❌
+- `src/hooks/use-homework.ts` line 118: `useDeleteHomework()` - direct DELETE ❌
+- `src/pages/teacher/homework.tsx` line 29: Uses direct table access ❌
+- **SECURITY ISSUE:** Teacher relies on client-supplied `teacher_id` from session
+
+**Student direct access (CURRENTLY INSECURE):**
+- `src/hooks/use-homework.ts` line 31: Uses `get_student_class` RPC to get class_id ❌
+- `src/hooks/use-homework.ts` line 45: direct SELECT with `class_id` filter ❌
+- `src/pages/student/homework.tsx` line 12: Uses direct table access ❌
+- **SECURITY ISSUE:** Student relies on `get_student_class` which accepts client-supplied student_id
+
+**Parent homework access (NONE - CORRECT):**
+- No Parent homework access found in application code ✅
+- No Parent homework UI exists ✅
+
+**Admin homework access (NONE - CORRECT):**
+- No Admin homework access found in application code ✅
+- No Admin homework UI exists ✅
+- Original policies allowed Admin full access but not used
+
+**Accountant homework access (NONE - CORRECT):**
+- No Accountant homework access found in application code ✅
+- Accountant role is finance-only, no homework operations ✅
+
+### STEP 2: get_student_class AUDIT
+
+**Function definition (from 20240720_student_class_rpc.sql):**
+- Signature: `get_student_class(p_student_id UUID)`
+- Returns: `TABLE (class_id UUID)`
+- SECURITY DEFINER ✅
+- **SECURITY ISSUE:** Accepts `p_student_id` from caller ❌
+- **SECURITY ISSUE:** Caller can request any student's class ❌
+- **SECURITY ISSUE:** No session validation ❌
+- **SECURITY ISSUE:** No authorization check ❌
+
+**Current usage:**
+- `src/hooks/use-homework.ts` line 31: Called with `studentId` from session
+- Used by Student homework to get class_id for filtering
+
+**Assessment:** **UNSAFE - NEEDS REPLACEMENT**
+
+The function is SECURITY DEFINER but accepts any student_id from the caller, allowing a Student to potentially request another student's class information. It should be replaced with a session-validated RPC similar to the grade RPCs.
+
+### STEP 3: LIVE AUDIT SQL PREPARED
+
+**READ-ONLY audit SQL created:** `supabase/migrations/audit_homework_security.sql`
+
+This SQL reports:
+1. Homework table exact schema
+2. RLS enabled status and FORCE RLS status
+3. All RLS policies on homework (policy name, command, roles, USING/WITH CHECK expressions)
+4. Table grants for anon, authenticated, service_role
+5. Column grants if any
+6. Table ownership
+7. Dependent views/materialized views
+8. Public functions referencing homework table
+9. Function signatures, SECURITY DEFINER/INVOKER, search_path
+10. EXECUTE privileges for anon, authenticated, service_role
+11. Exact metadata/security for get_student_class function
+12. get_student_class execute grants
+
+**User must run this audit SQL manually in Supabase SQL Editor.**
+
+### STEP 4: PROPOSED SECURITY MODEL (PENDING AUDIT RESULTS)
+
+**Target security model (based on repo audit):**
+
+**Teacher:**
+- Create SECURITY DEFINER RPC for Teacher homework CRUD
+- Authorization derived server-side from Teacher custom session
+- Assignment/class ownership validated server-side
+- Use `validate_custom_session('teacher')` pattern from B6A-2
+- Remove direct table access
+- RPC functions:
+  - `get_teacher_homework(p_session_token, filters)`
+  - `create_teacher_homework(p_session_token, homework_data)`
+  - `update_teacher_homework(p_session_token, homework_id, homework_data)`
+  - `delete_teacher_homework(p_session_token, homework_id)`
+
+**Student:**
+- Replace `get_student_class` with session-validated RPC
+- Create SECURITY DEFINER RPC for Student homework read
+- Class/student identity derived server-side from Student custom session
+- Use `validate_custom_session('student')` pattern from B6A-1
+- Remove direct table access
+- RPC function:
+  - `get_student_homework(p_session_token, filters)`
+
+**Parent:**
+- No Parent homework access required (not implemented)
+
+**Admin:**
+- No Admin homework access required (not implemented)
+- Remove permissive Admin policies
+- If needed in future, add trusted-Admin SELECT policy using `SELECT public.is_admin()`
+
+**RLS:**
+- Enable FORCE RLS to prevent any direct table access bypass
+- Remove all existing permissive policies
+- Add minimal policies only if direct table access is absolutely required
+- Prefer RPC-only model for security
+
+### STEP 5: LIKELY MIGRATIONS/RPCs NEEDED
+
+**New migrations likely needed:**
+1. `20240830_secure_homework_access.sql` - Create secure RPCs for Teacher/Student homework
+2. `20240830_replace_get_student_class.sql` - Replace unsafe get_student_class with session-validated version
+3. `20240830_lockdown_homework_table.sql` - Enable FORCE RLS, remove permissive policies
+
+**New RPC functions likely needed:**
+1. `get_teacher_homework(p_session_token TEXT, p_class_id UUID, p_subject_id UUID)` - Teacher homework read
+2. `create_teacher_homework(p_session_token TEXT, p_homework JSONB)` - Teacher homework create
+3. `update_teacher_homework(p_session_token TEXT, p_homework_id UUID, p_homework JSONB)` - Teacher homework update
+4. `delete_teacher_homework(p_session_token TEXT, p_homework_id UUID)` - Teacher homework delete
+5. `get_student_homework(p_session_token TEXT, p_term TEXT)` - Student homework read
+6. Replace `get_student_class` with session-validated version or eliminate it entirely
+
+### STEP 6: LIKELY UI REGRESSIONS TO TEST
+
+After implementing secure RPCs:
+- Teacher homework page still loads correctly
+- Teacher can create homework for assigned classes/subjects
+- Teacher can update/delete their own homework
+- Student homework page still loads correctly
+- Student sees only homework for their own class
+- No ability to bypass authorization through direct table access
+- No ability to request other students' class information
+
+### CURRENT BLOCKER
+
+Awaiting user to run `audit_homework_security.sql` in Supabase SQL Editor and return results.
+
+The audit will reveal:
+- Current live RLS policies (may differ from migration files)
+- Current live table grants (may differ from migration files)
+- Current state of get_student_class function
+- Any unexpected dependencies or exposures
+- Exact current state before security implementation
+
+### NEXT AFTER AUDIT
+
+Once user returns live audit results:
+1. Compare live state vs migration file expectations
+2. Confirm get_student_class is indeed unsafe
+3. Design final secure RPC architecture
+4. Create minimal security migration
+5. Prepare verification SQL
+6. User manually applies migration
+7. Run verification to confirm security
+8. Test Teacher/Student homework UIs for regressions
+
+### CONFIRMATION
+
+- NO SQL applied yet
+- NO final migration created yet
+- NO commit/push performed
+- Only audit SQL prepared for manual execution
+- Awaiting live Supabase audit results

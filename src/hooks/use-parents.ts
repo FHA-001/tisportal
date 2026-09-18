@@ -340,60 +340,65 @@ export const useStudentFeeSummary = (studentId?: string, termId?: string, classN
   return useQuery({
     queryKey: ['studentFeeSummary', studentId, termId, className, isParent ? session.id : null],
     queryFn: async () => {
-      if (!studentId || !termId) return null;
+      if (!studentId || !termId || !className) return null;
 
-      // Normalize class name by removing spaces for matching
-      const normalizedClassName = className?.replace(/\s+/g, '');
+      // Normalize both the student's class name and the value stored in school_fees.
+      // This avoids mismatches such as "Primary 5" vs "Primary5" or case differences.
+      const normalizeClassName = (value?: string | null) =>
+        (value || '').replace(/\s+/g, '').toLowerCase();
 
-      // Get fee amount from school_fees based on class name and academic session
-      let schoolFee = null;
-      let feeError = null;
+      const normalizedClassName = normalizeClassName(className);
 
-      // First try with academic session
-      const { data: feeWithSession } = await supabase
+      // Prefer the active/current academic-session fee row. Fetch candidate rows and
+      // compare normalized class names client-side instead of relying on an exact DB
+      // string match.
+      const { data: sessionFees, error: sessionFeesError } = await supabase
         .from('school_fees')
-        .select('fee_amount')
-        .eq('class_name', normalizedClassName)
-        .eq('academic_session_id', termId)
-        .maybeSingle();
+        .select('fee_amount, class_name, academic_session_id')
+        .eq('academic_session_id', termId);
 
-      if (feeWithSession) {
-        schoolFee = feeWithSession;
-      } else {
-        // Fallback: try without academic session filter
-        const { data: feeWithoutSession, error: errorWithoutSession } = await supabase
+      if (sessionFeesError) throw sessionFeesError;
+
+      let schoolFee = sessionFees?.find(
+        (fee: any) => normalizeClassName(fee.class_name) === normalizedClassName
+      );
+
+      // Backward-compatible fallback for older fee rows that may not have the
+      // academic session associated correctly.
+      if (!schoolFee) {
+        const { data: allFees, error: allFeesError } = await supabase
           .from('school_fees')
-          .select('fee_amount')
-          .eq('class_name', normalizedClassName)
-          .maybeSingle();
+          .select('fee_amount, class_name, academic_session_id');
 
-        schoolFee = feeWithoutSession;
-        feeError = errorWithoutSession;
+        if (allFeesError) throw allFeesError;
+
+        schoolFee = allFees?.find(
+          (fee: any) => normalizeClassName(fee.class_name) === normalizedClassName
+        );
       }
 
-      if (feeError && feeError.code !== 'PGRST116') throw feeError;
-
-      // Get total payments for the term
+      // Get total approved/recorded payments for the academic session.
       let totalPaid = 0;
 
       if (isParent) {
-        // Parent uses secure RPC
         if (!session || !session.session_token) {
           throw new Error('Session expired or invalid. Please log in again.');
         }
 
-        const { data: feePayments, error: paymentsError } = await supabase.rpc('get_parent_fee_payments', {
-          p_session_token: session.session_token
-        });
+        const { data: feePayments, error: paymentsError } = await supabase.rpc(
+          'get_parent_fee_payments',
+          { p_session_token: session.session_token }
+        );
 
         if (paymentsError) throw paymentsError;
 
-        // Filter by student_id and term_id
-        totalPaid = feePayments
-          ?.filter((fp: any) => fp.student_id === studentId && fp.term_id === termId)
-          .reduce((sum: number, p: any) => sum + parseFloat(p.amount), 0) || 0;
+        totalPaid =
+          feePayments
+            ?.filter(
+              (fp: any) => fp.student_id === studentId && fp.term_id === termId
+            )
+            .reduce((sum: number, payment: any) => sum + Number(payment.amount || 0), 0) || 0;
       } else {
-        // Admin uses direct table access (to be secured in B5B/B5C)
         const { data: payments, error: paymentsError } = await supabase
           .from('fee_payments')
           .select('amount')
@@ -402,19 +407,23 @@ export const useStudentFeeSummary = (studentId?: string, termId?: string, classN
 
         if (paymentsError) throw paymentsError;
 
-        totalPaid = payments?.reduce((sum, p) => sum + parseFloat(p.amount), 0) || 0;
+        totalPaid =
+          payments?.reduce(
+            (sum: number, payment: any) => sum + Number(payment.amount || 0),
+            0
+          ) || 0;
       }
 
-      const totalFees = schoolFee?.fee_amount || 0;
-      const outstanding = totalFees - totalPaid;
+      const totalFees = Number(schoolFee?.fee_amount || 0);
+      const outstanding = Math.max(totalFees - totalPaid, 0);
 
       return {
         total_fees: totalFees,
         total_paid: totalPaid,
-        outstanding: outstanding
+        outstanding,
       };
     },
-    enabled: !!studentId && !!termId && !!className
+    enabled: !!studentId && !!termId && !!className,
   });
 };
 
@@ -466,14 +475,33 @@ export const useDeleteFeePayment = () => {
 };
 
 export const useSchoolAccountDetails = () => {
+  const session = getCustomSession();
+
   return useQuery({
-    queryKey: ['schoolAccountDetails'],
+    queryKey: ['schoolAccountDetails', session?.role, session?.id],
     queryFn: async () => {
+      // Parent custom-auth sessions must use the secure RPC.
+      if (session?.role === 'parent') {
+        if (!session.session_token) {
+          throw new Error('Session expired or invalid. Please log in again.');
+        }
+
+        const { data, error } = await supabase.rpc('get_parent_school_account_details', {
+          p_session_token: session.session_token
+        });
+
+        if (error) throw error;
+
+        return data?.[0] ?? null;
+      }
+
+      // Admin remains on direct table access, protected by trusted-admin RLS.
       const { data, error } = await supabase
         .from('school_account_details')
         .select('*')
         .eq('is_active', true)
         .maybeSingle();
+
       if (error) throw error;
       return data;
     }

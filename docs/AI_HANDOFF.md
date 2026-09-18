@@ -1102,10 +1102,200 @@ Once user returns live audit results:
 7. Run verification to confirm security
 8. Test Teacher/Student homework UIs for regressions
 
+### HOMEWORK SECURITY COMPLETE
+- Homework secure RPC migration created (20240830_secure_homework_access.sql)
+- Homework related data fix migration created (20240831_fix_homework_related_data.sql)
+- Homework verification migration created (verify_homework_security.sql)
+- 21/21 verification checks passed
+- Teacher/Student Homework functional regression passed
+- Corrective commit/push completed
+- Working tree clean
+
+### REMAINING TABLES SECURITY AUDIT
+All remaining tables need security audit today.
+
+### TARGET TABLES FOR AUDIT
+- school_account_details
+- parents
+- teachers
+- teachers_directory
+- pending_student_signups
+- academic_sessions
+- school_fees
+- payment_accounts
+- announcements
+- audit_logs
+- subjects
+- class_subjects
+- newsletters
+- notifications
+
+### CURRENT TASK: CONSOLIDATED REMAINING TABLE SECURITY AUDIT
+
+**DO NOT apply SQL. DO NOT create or modify live database objects. DO NOT commit/push.**
+
+User manually runs all Supabase SQL after ChatGPT review.
+
+### AUDIT STEPS COMPLETED
+
+**STEP 1: REPO USAGE AUDIT COMPLETE**
+- Direct table access searched for all target tables
+- RPC/function usage identified
+- Role-by-role usage mapped
+- High-risk tables identified
+
+**STEP 2: MIGRATION/POLICY HISTORY COMPLETE**
+- RLS enablement history reviewed
+- Existing/legacy policies identified
+- Grants/revokes documented
+- Unsafe patterns flagged
+
+**STEP 3: HIGH-RISK REVIEW COMPLETE**
+- school_account_details: Banking/payment information - HIGH RISK
+- parents: Personal data exposure - HIGH RISK
+- teachers: Sensitive fields - MEDIUM RISK
+- pending_student_signups: Signup token/data - HIGH RISK
+- audit_logs: Should be Admin-only - HIGH RISK
+- payment accounts: Financial data - HIGH RISK
+
+**STEP 4: READ-ONLY AUDIT SQL CREATED**
+- `supabase/migrations/audit_remaining_security.sql` created
+- Inspects all target tables
+- Reports RLS status, policies, grants, dependencies
+- READ-ONLY - no modifications
+
+**STEP 5: SECURITY DEFINER FUNCTION AUDIT COMPLETE**
+- `supabase/migrations/audit_security_definer_functions.sql` created
+- Inspects all SECURITY DEFINER functions
+- Identifies missing search_path, unsafe execute permissions
+- Reports session validation, auth.uid() usage, caller-supplied IDs
+
+**STEP 6: ATTENDANCE LEFTOVERS CHECK COMPLETE**
+- attendance table exists (20240719_attendance.sql)
+- attendance hooks exist (use-attendance.ts)
+- attendance page exists (teacher/attendance.tsx)
+- Feature is in codebase but should be removed as per plan
+
+### TABLE EXISTENCE FINDINGS
+- teachers_directory: MISSING (not a table)
+- pending_student_signups: VIEW (not a table - defined in 20240721_student_signup.sql)
+- audit_logs: MISSING (not found in migrations, but referenced in use-records.ts)
+- notifications: MISSING (not found in migrations, but referenced in payment RPCs)
+
+### DIRECT TABLE USAGE FINDINGS
+
+**school_account_details:**
+- src/hooks/use-parents.ts line 473: SELECT (Admin/Parent account details)
+- src/hooks/use-parents.ts line 492: UPSERT (Admin/Parent account details)
+- Used by Admin for payment account management
+- Used by Parent for fee payment information
+
+**parents:**
+- src/hooks/use-parents.ts line 39: SELECT (Admin parent management)
+- src/hooks/use-parents.ts line 180: INSERT (Admin parent creation)
+- src/hooks/use-parents.ts line 207: UPDATE (Admin parent update)
+- src/hooks/use-parents.ts line 228: DELETE (Admin parent deletion)
+- Direct table access by Admin only
+- Parent uses secure RPCs (get_parent_children, get_parent_fee_payments, etc.)
+
+**teachers:**
+- src/hooks/use-users.ts line 121: INSERT (Admin teacher creation)
+- src/hooks/use-users.ts line 146: UPDATE (Admin teacher update)
+- src/hooks/use-users.ts line 162: DELETE (Admin teacher deletion)
+- Direct table access by Admin only
+- Teacher flows use secure RPCs (login_teacher, get_students_by_teacher, etc.)
+
+**academic_sessions:**
+- src/hooks/use-finance.ts line 63: SELECT (Accountant finance dashboard)
+- src/hooks/use-finance.ts line 212: SELECT (Accountant finance dashboard)
+- src/hooks/use-academics.ts line 196: SELECT (Admin session management)
+- src/hooks/use-academics.ts line 208: UPDATE (Admin session creation)
+- src/hooks/use-academics.ts line 229: UPDATE (Admin session update)
+- Direct table access by Admin and Accountant
+
+**school_fees:**
+- src/hooks/use-parents.ts line 354: SELECT (Parent fee lookup)
+- src/hooks/use-parents.ts line 365: SELECT (Parent fee lookup fallback)
+- src/hooks/use-school-fees.ts line 10: SELECT (Admin fee management)
+- src/hooks/use-school-fees.ts line 24: UPDATE (Admin fee update)
+- Direct table access by Admin and Parent
+
+**payment_accounts:**
+- src/hooks/use-school-fees.ts line 44: SELECT (Admin payment account management)
+- src/hooks/use-school-fees.ts line 58: INSERT (Admin payment account creation)
+- src/hooks/use-school-fees.ts line 88: UPDATE (Admin payment account update)
+- src/hooks/use-school-fees.ts line 114: DELETE (Admin payment account deletion)
+- Direct table access by Admin only
+
+**announcements:**
+- src/hooks/use-announcements.ts line 10: SELECT (Admin announcement management)
+- src/hooks/use-announcements.ts line 29: SELECT (Public announcements)
+- src/hooks/use-announcements.ts line 49: SELECT (Student announcements)
+- src/hooks/use-announcements.ts line 66: SELECT (Parent announcements)
+- src/hooks/use-announcements.ts line 83: SELECT (Teacher announcements)
+- src/hooks/use-announcements.ts line 106: INSERT (Admin announcement creation)
+- src/hooks/use-announcements.ts line 130: UPDATE (Admin announcement update)
+- src/hooks/use-announcements.ts line 155: DELETE (Admin announcement deletion)
+- Direct table access by all roles (filtered by RLS policies)
+
+**audit_logs:**
+- src/hooks/use-records.ts line 247: SELECT (Admin audit log viewing)
+- src/hooks/use-records.ts line 257: INSERT (All roles - audit logging)
+- Direct table access by all roles
+
+**subjects:**
+- src/hooks/use-academics.ts line 85: SELECT (Admin subject management)
+- src/hooks/use-academics.ts line 96: INSERT (Admin subject creation)
+- src/hooks/use-academics.ts line 112: UPDATE (Admin subject update)
+- src/hooks/use-academics.ts line 128: DELETE (Admin subject deletion)
+- Direct table access by Admin only
+
+**class_subjects:**
+- src/hooks/use-academics.ts line 144: SELECT (Admin/Teacher class assignment management)
+- src/hooks/use-academics.ts line 164: INSERT (Admin class assignment creation)
+- src/hooks/use-academics.ts line 180: DELETE (Admin class assignment deletion)
+- Direct table access by Admin and Teacher
+
+**newsletters:**
+- src/hooks/use-newsletters.ts line 10: SELECT (Public newsletter viewing)
+- src/hooks/use-newsletters.ts line 25: SELECT (Admin newsletter management)
+- src/hooks/use-newsletters.ts line 56: INSERT (Admin newsletter creation)
+- src/hooks/use-newsletters.ts line 83: UPDATE (Admin newsletter publish)
+- src/hooks/use-newsletters.ts line 109: UPDATE (Admin newsletter unpublish)
+- src/hooks/use-newsletters.ts line 155: DELETE (Admin newsletter deletion)
+- Direct table access by Admin and Public
+
+### PROPOSED BATCHED SECURITY FIX PLAN
+
+**GROUP A: RPC-ONLY RECOMMENDED (HIGH PRIORITY)**
+- school_account_details - Banking data, should be Admin-only RPC
+- parents - Personal data, should be Admin-only RPC
+- payment_accounts - Financial data, should be Admin-only RPC
+
+**GROUP B: TRUSTED ADMIN DIRECT SELECT ONLY**
+- teachers - Admin management table, already RLS-hardened
+- subjects - Reference data, Admin-only appropriate
+- class_subjects - Assignment management, requires careful Teacher access
+
+**GROUP C: SAFE PUBLIC/MINIMAL READ**
+- newsletters - Public PDFs, current read model appropriate
+- announcements - Public announcements, current filtered read appropriate
+
+**GROUP D: BACKEND/SERVICE-ONLY**
+- audit_logs - Should be service_role only, no direct client access
+- pending_student_signups - Admin view only, should be service_role backed
+
+**GROUP E: REFERENCE DATA (LOW RISK)**
+- academic_sessions - Reference data, current Admin access appropriate
+- school_fees - Reference data, current Admin/Parent access appropriate
+
+**GROUP F: ATTENDANCE CLEANUP**
+- attendance table, hooks, and pages should be removed
+
 ### CONFIRMATION
 
 - NO SQL applied yet
-- NO final migration created yet
+- NO lockdown migration created yet
 - NO commit/push performed
-- Only audit SQL prepared for manual execution
-- Awaiting live Supabase audit results
+- Only audit SQL files created for manual execution
+- Awaiting user review and approval of batched security plan

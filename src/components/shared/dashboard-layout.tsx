@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   LayoutDashboard, 
@@ -21,19 +21,20 @@ import {
   Newspaper,
   Book,
   Users as ParentsIcon,
-  CheckSquare,
   Megaphone,
   FileEdit,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Bell,
+  Check,
+  CheckCheck
 } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { TISLogo } from './tis-logo';
 import { ThemeToggle } from './theme-toggle';
-import { useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { getCustomSession, clearCustomSession } from '@/lib/auth-utils';
-import { useQuery } from '@tanstack/react-query';
+import { getCustomSession, signOutCustomSession } from '@/lib/auth-utils';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface DashboardLayoutProps {
   role: 'admin' | 'teacher' | 'student' | 'parent' | 'accountant';
@@ -49,6 +50,16 @@ interface NavItem {
 interface NavSection {
   title: string;
   items: NavItem[];
+}
+
+interface NotificationItem {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  related_submission_id: string | null;
+  is_read: boolean;
+  created_at: string;
 }
 
 const adminNavSections: NavSection[] = [
@@ -169,11 +180,18 @@ const parentNavSections: NavSection[] = [
 
 const accountantNavSections: NavSection[] = [
   {
-    title: 'Dashboard',
+    title: 'Finance',
     items: [
       { label: 'Dashboard', path: '/accountant', icon: LayoutDashboard },
       { label: 'Payment Review', path: '/accountant/payment-review', icon: Banknote },
       { label: 'Financial Reports', path: '/accountant/financial-reports', icon: TrendingUp },
+    ]
+  },
+  {
+    title: 'Communication',
+    items: [
+      { label: 'Announcements', path: '/accountant/announcements', icon: Megaphone },
+      { label: 'Newsletters', path: '/accountant/newsletters', icon: Newspaper },
     ]
   },
 ];
@@ -181,7 +199,9 @@ const accountantNavSections: NavSection[] = [
 export function DashboardLayout({ role, children }: DashboardLayoutProps) {
   const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const queryClient = useQueryClient();
 
   const navSections = role === 'admin' ? adminNavSections : role === 'teacher' ? teacherNavSections : role === 'parent' ? parentNavSections : role === 'accountant' ? accountantNavSections : studentNavSections;
 
@@ -196,7 +216,7 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
     if (role === 'admin') {
       await supabase.auth.signOut();
     } else {
-      clearCustomSession();
+      await signOutCustomSession();
     }
     setLocation('/login');
   };
@@ -216,8 +236,113 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
     ? adminSession?.user?.email?.split('@')[0] || 'Admin'
     : customSession?.full_name || 'User';
 
-  const userRole = role === 'admin' ? 'Administrator' : role === 'teacher' ? 'Teacher' : role === 'parent' ? 'Parent' : 'Student';
+  const userRole = role === 'admin' ? 'Administrator' : role === 'teacher' ? 'Teacher' : role === 'accountant' ? 'Accountant' : role === 'parent' ? 'Parent' : 'Student';
   const initial = userName.charAt(0).toUpperCase();
+
+  const notificationQueryKey = useMemo(
+    () => ['notifications', role, role === 'admin' ? adminSession?.user?.id ?? null : customSession?.id ?? null],
+    [role, adminSession?.user?.id, customSession?.id]
+  );
+
+  const { data: notifications = [], isLoading: notificationsLoading } = useQuery<NotificationItem[]>({
+    queryKey: notificationQueryKey,
+    queryFn: async () => {
+      if (role === 'admin') {
+        if (!adminSession?.user?.id) return [];
+        const { data, error } = await supabase.rpc('get_admin_notifications', {
+          p_limit: 50,
+        });
+        if (error) throw error;
+        return (data ?? []) as NotificationItem[];
+      }
+
+      if (!customSession?.session_token) return [];
+
+      const { data, error } = await supabase.rpc('get_custom_notifications', {
+        p_session_token: customSession.session_token,
+        p_limit: 50,
+      });
+      if (error) throw error;
+      return (data ?? []) as NotificationItem[];
+    },
+    enabled: role === 'admin'
+      ? Boolean(adminSession?.user?.id)
+      : Boolean(customSession?.session_token),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+
+  const unreadCount = notifications.filter((item) => !item.is_read).length;
+
+  const markNotificationRead = useMutation({
+    mutationFn: async (notificationId: string) => {
+      if (role === 'admin') {
+        const { data, error } = await supabase.rpc('mark_admin_notification_read', {
+          p_notification_id: notificationId,
+        });
+        if (error) throw error;
+        if (data?.success === false) throw new Error(data.error || 'Failed to mark notification as read');
+        return data;
+      }
+
+      if (!customSession?.session_token) {
+        throw new Error('No valid session. Please log in again.');
+      }
+
+      const { data, error } = await supabase.rpc('mark_custom_notification_read', {
+        p_session_token: customSession.session_token,
+        p_notification_id: notificationId,
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error || 'Failed to mark notification as read');
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: notificationQueryKey });
+    },
+  });
+
+  const markAllNotificationsRead = useMutation({
+    mutationFn: async () => {
+      if (role === 'admin') {
+        const { data, error } = await supabase.rpc('mark_all_admin_notifications_read');
+        if (error) throw error;
+        if (data?.success === false) throw new Error(data.error || 'Failed to mark notifications as read');
+        return data;
+      }
+
+      if (!customSession?.session_token) {
+        throw new Error('No valid session. Please log in again.');
+      }
+
+      const { data, error } = await supabase.rpc('mark_all_custom_notifications_read', {
+        p_session_token: customSession.session_token,
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error || 'Failed to mark notifications as read');
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: notificationQueryKey });
+    },
+  });
+
+  const formatNotificationTime = (createdAt: string) => {
+    const created = new Date(createdAt);
+    const diffMs = Date.now() - created.getTime();
+    const diffMinutes = Math.floor(diffMs / 60_000);
+
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+
+    return created.toLocaleDateString();
+  };
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-sidebar">
@@ -365,7 +490,119 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
             </button>
             {/* Breadcrumb or small contextual title could go here */}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setNotificationsOpen((open) => !open)}
+                className="relative p-2 text-foreground hover:bg-accent rounded-md transition-colors"
+                aria-label="Notifications"
+                aria-expanded={notificationsOpen}
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 text-center font-bold">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              <AnimatePresence>
+                {notificationsOpen && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Close notifications"
+                      onClick={() => setNotificationsOpen(false)}
+                      className="fixed inset-0 z-30 cursor-default"
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 top-11 z-40 w-[min(92vw,24rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl"
+                    >
+                      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+                        <div>
+                          <h3 className="font-semibold text-sm">Notifications</h3>
+                          <p className="text-xs text-muted-foreground">
+                            {unreadCount > 0 ? `${unreadCount} unread` : 'You are all caught up'}
+                          </p>
+                        </div>
+                        {unreadCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => markAllNotificationsRead.mutate()}
+                            disabled={markAllNotificationsRead.isPending}
+                            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline disabled:opacity-50"
+                          >
+                            <CheckCheck className="w-4 h-4" />
+                            Mark all read
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="max-h-[70vh] overflow-y-auto">
+                        {notificationsLoading ? (
+                          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                            Loading notifications...
+                          </div>
+                        ) : notifications.length === 0 ? (
+                          <div className="px-4 py-10 text-center">
+                            <Bell className="w-8 h-8 mx-auto mb-3 text-muted-foreground/50" />
+                            <p className="text-sm font-medium">No notifications yet</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              New school updates will appear here.
+                            </p>
+                          </div>
+                        ) : (
+                          notifications.map((notification) => (
+                            <button
+                              type="button"
+                              key={notification.id}
+                              onClick={() => {
+                                if (!notification.is_read) {
+                                  markNotificationRead.mutate(notification.id);
+                                }
+                              }}
+                              className={`w-full text-left px-4 py-3 border-b border-border last:border-b-0 transition-colors hover:bg-accent/50 ${
+                                notification.is_read ? 'bg-card' : 'bg-primary/5'
+                              }`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${
+                                  notification.is_read ? 'bg-muted-foreground/30' : 'bg-primary'
+                                }`} />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <p className={`text-sm ${
+                                      notification.is_read ? 'font-medium' : 'font-semibold'
+                                    }`}>
+                                      {notification.title}
+                                    </p>
+                                    {notification.is_read && (
+                                      <Check className="w-4 h-4 shrink-0 text-muted-foreground" />
+                                    )}
+                                  </div>
+                                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                    {notification.message}
+                                  </p>
+                                  <p className="mt-1.5 text-[11px] text-muted-foreground/80">
+                                    {formatNotificationTime(notification.created_at)}
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+
             <ThemeToggle />
           </div>
         </header>

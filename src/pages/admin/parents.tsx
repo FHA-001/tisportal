@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Users,
   Plus,
@@ -67,16 +68,23 @@ export default function AdminParents() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.full_name || !formData.email || !formData.password) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
+    if (
+  !formData.full_name ||
+  !formData.email ||
+  (!editingParent && !formData.password)
+) {
+  toast.error('Please fill in all required fields');
+  return;
+}
 
     if (editingParent) {
+      // Password is creation-only here. Existing parent passwords must be
+      // changed through the dedicated Admin Reset Password action.
+      const { password: _password, ...parentData } = formData;
+
       await updateParent.mutateAsync({
         id: editingParent.id,
-        ...formData,
-        password: formData.password // Only update password if provided
+        ...parentData
       });
     } else {
       await createParent.mutateAsync(formData);
@@ -300,13 +308,13 @@ export default function AdminParents() {
                 {parents.map((parent: any, index: number) => (
                   <div
                     key={parent.id}
-                    className="card-premium border border-border rounded-2xl p-5 bg-gradient-to-br from-card to-muted/30"
+                    className="card-premium border border-border rounded-2xl p-4 sm:p-5 bg-gradient-to-br from-card to-muted/30"
                   >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-start gap-3 mb-2">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
                           <span className="text-sm font-medium text-muted-foreground w-6">{index + 1}.</span>
-                          <h3 className="text-lg font-semibold">{parent.full_name}</h3>
+                          <h3 className="min-w-0 break-words text-base sm:text-lg font-semibold">{parent.full_name}</h3>
                           {parent.is_active ? (
                             <div className="flex items-center gap-1 text-xs text-emerald-600">
                               <CheckCircle className="w-3 h-3" />
@@ -319,7 +327,7 @@ export default function AdminParents() {
                             </div>
                           )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mb-3">
+                        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-4 text-sm text-muted-foreground mb-3">
                           <div className="flex items-center gap-1.5">
                             <Mail className="w-4 h-4" />
                             {parent.email}
@@ -351,7 +359,7 @@ export default function AdminParents() {
                           </Button>
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2 sm:justify-end">
                         <Button
                           size="sm"
                           variant="outline"
@@ -364,7 +372,7 @@ export default function AdminParents() {
                           size="sm"
                           variant="outline"
                           onClick={() => handleResetPassword(parent)}
-                          title="Reset Password to Default (Parent@123)"
+                          title="Reset Password to Default (Parent@12)"
                           className="hover:bg-amber-50 dark:hover:bg-amber-950/50 hover:text-amber-600 text-amber-600"
                         >
                           <RefreshCw className="w-4 h-4" />
@@ -389,28 +397,34 @@ export default function AdminParents() {
 
         {/* Assign Student Modal */}
         {showAssignModal && selectedParent && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <Card className="w-full max-w-md">
-              <CardHeader>
+          <div className="fixed inset-0 z-50 bg-black/50 p-4 overflow-hidden">
+            <div className="flex min-h-full items-center justify-center">
+              <Card className="w-full max-w-md max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden">
+              <CardHeader className="shrink-0">
                 <CardTitle>Assign Student to {selectedParent.full_name}</CardTitle>
                 <CardDescription>Select a student to assign to this parent.</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex-1 overflow-y-auto overscroll-contain pr-3">
                 <form onSubmit={handleAssignStudent} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="student">Student *</Label>
-                    <select
-                      id="student"
+                    <Select
                       value={assignData.student_id}
-                      onChange={(e) => setAssignData({ ...assignData, student_id: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-input bg-background"
-                      required
+                      onValueChange={(studentId) =>
+                        setAssignData({ ...assignData, student_id: studentId })
+                      }
                     >
-                      <option value="">Select a student</option>
-                      {students.map((s: any) => (
-                        <option key={s.id} value={s.id}>{s.full_name} ({s.admission_number})</option>
-                      ))}
-                    </select>
+                      <SelectTrigger id="student">
+                        <SelectValue placeholder="Select a student" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-72 overflow-y-auto">
+                        {students.map((s: any) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.full_name} ({s.admission_number || 'No admission number'})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="relationship">Relationship *</Label>
@@ -486,7 +500,8 @@ export default function AdminParents() {
                   </div>
                 )}
               </CardContent>
-            </Card>
+              </Card>
+            </div>
           </div>
         )}
       </DashboardLayout>

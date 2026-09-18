@@ -5,20 +5,21 @@ import { StatCard } from '@/components/shared/stat-card';
 import { Card, CardContent } from '@/components/ui/card';
 import { BookOpen, GraduationCap, Calendar, Award, Banknote } from 'lucide-react';
 import { getCustomSession } from '@/lib/auth-utils';
-import { useGrades } from '@/hooks/use-records';
+import { useStudentGrades } from '@/hooks/use-records';
 import { useClassSubjects, useAcademicSessions } from '@/hooks/use-academics';
 import { getTimeBasedGreeting } from '@/lib/greeting';
 
 export default function StudentDashboard() {
   const session = getCustomSession() as any; // student session
-  
-  const { data: sessions = [] } = useAcademicSessions();
-  const activeSession = sessions.find(s => s.is_active);
 
-  // Student specific data
-  const { data: grades = [] } = useGrades({
-    student_id: session?.id,
-    term: activeSession?.current_term || 'First Term',
+  const { data: sessions = [] } = useAcademicSessions();
+  const activeSession = sessions.find((s: any) => s.is_active);
+
+  const currentTerm = activeSession?.current_term || 'First Term';
+
+  // Student grades must use the secure session-validated RPC-backed hook.
+  const { data: grades = [] } = useStudentGrades({
+    term: currentTerm,
     session: activeSession?.name
   });
 
@@ -26,11 +27,14 @@ export default function StudentDashboard() {
 
   // Stats calculation
   const totalSubjects = classSubjects.length;
-  
+
   // Calculate average from available grades
-  const validGrades = grades.filter(g => g.total !== null);
-  const totalScored = validGrades.reduce((acc, g) => acc + (g.total || 0), 0);
-  const currentAverage = validGrades.length > 0 ? (totalScored / validGrades.length).toFixed(1) : 0;
+  const validGrades = grades.filter((g: any) => g.total !== null && g.total !== undefined);
+  const totalScored = validGrades.reduce((acc: number, g: any) => acc + Number(g.total || 0), 0);
+  const currentAverage =
+    validGrades.length > 0
+      ? (totalScored / validGrades.length).toFixed(1)
+      : null;
 
   return (
     <CustomSessionGuard role="student">
@@ -44,7 +48,7 @@ export default function StudentDashboard() {
         <div className="gradient-premium rounded-2xl p-6 md:p-8 mb-8 text-white relative overflow-hidden shadow-lg border border-navy-700">
           <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-white/5 blur-3xl pointer-events-none" />
           <div className="absolute bottom-0 right-32 -mb-16 w-48 h-48 rounded-full bg-gold-500/10 blur-3xl pointer-events-none" />
-          
+
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6 relative z-10">
             <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center border-2 border-white/20 shrink-0 shadow-inner">
               <span className="text-3xl font-heading font-bold">{session?.full_name?.charAt(0)}</span>

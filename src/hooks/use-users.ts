@@ -104,10 +104,29 @@ export const useTeachers = (role: 'admin' | 'student' = 'admin') => {
   return useQuery({
     queryKey: ['teachers', role],
     queryFn: async () => {
-      const table = role === 'admin' ? 'teachers' : 'teachers_directory';
-      const { data, error } = await supabase.from(table).select('*').order('full_name', { ascending: true });
+      if (role === 'admin') {
+        const { data, error } = await supabase
+          .from('teachers')
+          .select('*')
+          .order('full_name', { ascending: true });
+
+        if (error) throw error;
+        return data;
+      }
+
+      // Student custom-auth sessions must not read teachers_directory directly.
+      const session = getCustomSession();
+
+      if (!session || session.role !== 'student' || !session.session_token) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
+      const { data, error } = await supabase.rpc('get_student_teacher_directory', {
+        p_session_token: session.session_token
+      });
+
       if (error) throw error;
-      return data;
+      return data || [];
     }
   });
 };
@@ -139,11 +158,21 @@ export const useUpdateTeacherAdmin = () => {
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
       const updateData = { ...data };
+
+      // Never send frontend-only password fields to the teachers table.
       if (updateData.password) {
         updateData.password_hash = await hashPassword(updateData.password);
-        delete updateData.password;
       }
-      const { data: res, error } = await supabase.from('teachers').update(updateData).eq('id', id).select().single();
+      delete updateData.password;
+      delete updateData.confirmPassword;
+
+      const { data: res, error } = await supabase
+        .from('teachers')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
       if (error) throw error;
       return res;
     },
@@ -172,23 +201,50 @@ export const useDeleteTeacherAdmin = () => {
 
 // --- TEACHER CLASSES ---
 export const useTeacherClasses = (teacherId?: string) => {
+  const session = getCustomSession();
+
   return useQuery({
-    queryKey: ['teacherClasses', teacherId],
+    queryKey: ['teacherClasses', teacherId, session?.id],
     queryFn: async () => {
       if (!teacherId) return [];
-      
+
+      if (!session || session.role !== 'teacher' || !session.id) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
       const { data, error } = await supabase
-        .from('class_teachers')
+        .from('class_subjects')
         .select(`
-          *,
-          classes (id, name, tier),
-          students (id, full_name, admission_number, class_id)
+          class_id,
+          classes (id, name, tier, level)
         `)
-        .eq('teacher_id', teacherId);
-      
+        .eq('teacher_id', session.id);
+
       if (error) throw error;
-      return data;
+
+      const uniqueClasses = new Map<string, any>();
+
+      for (const row of data || []) {
+        const classInfo = Array.isArray((row as any).classes)
+          ? (row as any).classes[0]
+          : (row as any).classes;
+
+        const classId = (row as any).class_id;
+
+        if (!classId || !classInfo || uniqueClasses.has(classId)) {
+          continue;
+        }
+
+        uniqueClasses.set(classId, {
+          id: `class-${classId}`,
+          teacher_id: session.id,
+          class_id: classId,
+          classes: classInfo
+        });
+      }
+
+      return Array.from(uniqueClasses.values());
     },
-    enabled: !!teacherId
+    enabled: !!teacherId && session?.role === 'teacher' && !!session?.id
   });
 };

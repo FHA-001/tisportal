@@ -7,15 +7,15 @@ import { Newspaper, FileText, Calendar, ExternalLink, Loader2 } from 'lucide-rea
 import { useNewsletters } from '@/hooks/use-newsletters';
 import { format } from 'date-fns';
 
-export default function ParentNewsletters() {
+export default function AccountantNewsletters() {
   const { data: newsletters = [], isLoading } = useNewsletters();
 
   return (
-    <CustomSessionGuard role="parent">
-      <DashboardLayout role="parent">
+    <CustomSessionGuard role="accountant">
+      <DashboardLayout role="accountant">
         <PageHeader
           title="School Newsletters"
-          subtitle="Stay updated with the latest school news and announcements."
+          subtitle="View newsletters and school updates published by the administration."
         />
 
         <Card className="card-premium border-border">
@@ -25,23 +25,21 @@ export default function ParentNewsletters() {
               Published Newsletters
             </CardTitle>
             <CardDescription>
-              View and download school newsletters published by the administration.
+              Open and download the latest school newsletters.
             </CardDescription>
           </CardHeader>
 
           <CardContent>
             {isLoading ? (
-              <div className="flex items-center justify-center py-8">
+              <div className="flex items-center justify-center py-10">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
               </div>
             ) : newsletters.length === 0 ? (
               <div className="text-center py-12">
-                <div className="icon-premium mx-auto mb-4">
-                  <Newspaper className="w-6 h-6 text-navy-600" />
-                </div>
-                <h3 className="text-lg font-medium mb-2">No newsletters yet</h3>
-                <p className="text-muted-foreground">
-                  Check back later for school newsletters and updates.
+                <Newspaper className="w-8 h-8 mx-auto mb-3 text-muted-foreground/50" />
+                <h3 className="font-medium">No newsletters yet</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Published newsletters will appear here.
                 </p>
               </div>
             ) : (
@@ -49,10 +47,10 @@ export default function ParentNewsletters() {
                 {newsletters.map((newsletter: any, index: number) => (
                   <div
                     key={newsletter.id}
-                    className="card-premium border border-border rounded-2xl p-4 sm:p-5 bg-gradient-to-br from-card to-muted/30"
+                    className="rounded-2xl border border-border bg-gradient-to-br from-card to-muted/30 p-4 sm:p-5"
                   >
                     <div className="flex items-start gap-3 sm:gap-4">
-                      <span className="text-sm font-medium text-muted-foreground w-5 shrink-0 pt-1">
+                      <span className="w-5 shrink-0 pt-1 text-sm font-medium text-muted-foreground">
                         {index + 1}.
                       </span>
 

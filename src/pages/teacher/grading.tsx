@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '@/components/shared/dashboard-layout';
 import { CustomSessionGuard } from '@/components/shared/custom-session-guard';
 import { PageHeader } from '@/components/shared/page-header';
@@ -6,40 +6,46 @@ import { useClassSubjects, useAcademicSessions } from '@/hooks/use-academics';
 import { useStudents } from '@/hooks/use-users';
 import { useTeacherGrades, useSaveTeacherGrades } from '@/hooks/use-records';
 import { getCustomSession, getGradeLetter, getGradeRemark, computeTotal, getMaxScores } from '@/lib/auth-utils';
-import { generateReportCardPdf } from '@/lib/reportCardPdf';
 import { validateGradeData } from '@/lib/validation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Loader2, Save, Download, Filter, Zap, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { Loader2, Save, Filter, Zap, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function TeacherGrading() {
   const session = getCustomSession();
   
-  const { data: assignments = [] } = useClassSubjects(undefined, session?.id);
-  const { data: sessions = [] } = useAcademicSessions();
-  const activeSession = sessions.find(s => s.is_active);
+  const { data: assignmentsData = [] } = useClassSubjects(undefined, session?.id);
+  const { data: sessionsData = [] } = useAcademicSessions();
+  const assignments = assignmentsData as any[];
+  const sessions = sessionsData as any[];
+  const activeSession = sessions.find((s: any) => s.is_active);
 
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string>('');
   const [selectedTerm, setSelectedTerm] = useState<string>('First Term');
+
+  // Normalize the class-subject identifier returned by secure assignment RPCs.
+  const getAssignmentId = (assignment: any) =>
+    String(assignment?.id ?? assignment?.class_subject_id ?? '');
   
   // Bulk fill state
   const [bulkColumn, setBulkColumn] = useState<string>('');
   const [bulkValue, setBulkValue] = useState<string>('');
 
-  const targetAssignment = assignments.find(a => a.id === selectedAssignmentId);
+  const targetAssignment = assignments.find((a: any) => getAssignmentId(a) === selectedAssignmentId);
   const selectedClass = targetAssignment?.class_id;
 
-  const { data: students = [], isLoading: loadingStudents } = useStudents('teacher', selectedClass);
+  const { data: studentsData = [], isLoading: loadingStudents } = useStudents('teacher', selectedClass);
+  const students = studentsData as any[];
 
-  const { data: grades = [], isLoading: loadingGrades } = useTeacherGrades(
+  const { data: gradesData = [], isLoading: loadingGrades } = useTeacherGrades(
     selectedAssignmentId,
     { term: selectedTerm, session: activeSession?.name }
   );
+  const grades = gradesData as any[];
 
   const saveGrades = useSaveTeacherGrades();
 
@@ -49,14 +55,14 @@ export default function TeacherGrading() {
   // Create stable signatures to detect actual data changes, not just array reference changes
   const studentSignature = useMemo(() => {
     return students
-      .map(s => s.id)
+      .map((s: any) => s.id)
       .sort()
       .join(',');
   }, [students]);
 
   const gradeSignature = useMemo(() => {
     return grades
-      .map(g => JSON.stringify({
+      .map((g: any) => JSON.stringify({
         id: g.id,
         student_id: g.student_id,
         test_1: g.test_1,
@@ -73,8 +79,8 @@ export default function TeacherGrading() {
   useEffect(() => {
     if (students.length > 0) {
       const newLocal: Record<string, any> = {};
-      students.forEach(student => {
-        const existingGrade = grades.find(g => g.student_id === student.id);
+      students.forEach((student: any) => {
+        const existingGrade = grades.find((g: any) => g.student_id === student.id);
         newLocal[student.id] = {
           id: existingGrade?.id,
           student_id: student.id,
@@ -161,7 +167,7 @@ export default function TeacherGrading() {
     if (!selectedAssignmentId || !selectedTerm || Object.keys(localGrades).length === 0) return;
 
     // Validate all grade entries
-    for (const [studentId, gradeData] of Object.entries(localGrades)) {
+    for (const gradeData of Object.values(localGrades)) {
       const validation = validateGradeData(gradeData);
       if (!validation.valid) {
         toast.error(`Invalid grade data for student: ${validation.errors.join(', ')}`);
@@ -218,8 +224,8 @@ export default function TeacherGrading() {
     }
 
     const headers = ['Student Name', 'Admission Number', 'Test 1', 'Test 2', 'Project 1', 'Assignment 1', 'Exam', 'Total', 'Grade', 'Remark'];
-    const csvData = students.map(student => {
-      const grade = grades.find(g => g.student_id === student.id);
+    const csvData = students.map((student: any) => {
+      const grade = grades.find((g: any) => g.student_id === student.id);
       return [
         student.full_name,
         student.admission_number,
@@ -245,7 +251,6 @@ export default function TeacherGrading() {
     toast.success('Grades exported successfully');
   };
 
-  const isReady = selectedAssignmentId && selectedTerm && !loadingStudents && !loadingGrades;
   const maxScores = targetAssignment?.classes?.tier ? getMaxScores(targetAssignment.classes.tier) : null;
 
   return (
@@ -257,16 +262,23 @@ export default function TeacherGrading() {
           <div className="flex flex-col md:flex-row gap-4 items-end">
             <div className="space-y-2 w-full md:w-64">
               <Label>Class & Subject</Label>
-              <Select value={selectedAssignmentId} onValueChange={setSelectedAssignmentId}>
-                <SelectTrigger><SelectValue placeholder="Select Assignment" /></SelectTrigger>
-                <SelectContent>
-                  {assignments.map(a => (
-                    <SelectItem key={a.id} value={a.id}>
+              <select
+                value={selectedAssignmentId}
+                onChange={(e) => setSelectedAssignmentId(e.target.value)}
+                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">Select Assignment</option>
+                {assignments.map((a: any) => {
+                  const assignmentId = getAssignmentId(a);
+                  if (!assignmentId) return null;
+
+                  return (
+                    <option key={assignmentId} value={assignmentId}>
                       {a.classes?.name} - {a.subjects?.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    </option>
+                  );
+                })}
+              </select>
             </div>
             <div className="space-y-2 w-full md:w-48">
               <Label>Term</Label>
@@ -378,7 +390,7 @@ export default function TeacherGrading() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {students.map(student => {
+                  {students.map((student: any) => {
                     const localData = localGrades[student.id] || {};
                     
                     // Live computation for UI feedback

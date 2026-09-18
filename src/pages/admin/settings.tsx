@@ -12,12 +12,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAcademicSessions, useCreateSession, useUpdateSession } from '@/hooks/use-academics';
 import { SCHOOL_CONFIG } from '@/lib/app-config';
 import { format } from 'date-fns';
-import { Save, Plus, Calendar, Shield, Settings2 } from 'lucide-react';
-import { toast } from 'sonner';
-import { supabase } from '@/lib/supabaseClient';
+import { Plus, Calendar, Shield, Settings2 } from 'lucide-react';
 
 export default function AdminSettings() {
-  const { data: sessions = [], isLoading: loadingSessions } = useAcademicSessions();
+  const { data: sessions = [] } = useAcademicSessions();
   const createSession = useCreateSession();
   const updateSession = useUpdateSession();
 
@@ -52,10 +50,10 @@ export default function AdminSettings() {
         <PageHeader title="School Settings" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-card border border-border p-1 w-full sm:w-auto h-auto grid grid-cols-3">
-            <TabsTrigger value="academic" className="py-2.5 data-[state=active]:bg-muted"><Calendar className="w-4 h-4 mr-2" /> Academic Sessions</TabsTrigger>
-            <TabsTrigger value="general" className="py-2.5 data-[state=active]:bg-muted"><Settings2 className="w-4 h-4 mr-2" /> General Config</TabsTrigger>
-            <TabsTrigger value="security" className="py-2.5 data-[state=active]:bg-muted"><Shield className="w-4 h-4 mr-2" /> Security & Audit</TabsTrigger>
+          <TabsList className="bg-card border border-border p-1 w-full h-auto grid grid-cols-1 sm:grid-cols-3 sm:w-auto">
+            <TabsTrigger value="academic" className="justify-start sm:justify-center py-2.5 data-[state=active]:bg-muted"><Calendar className="w-4 h-4 mr-2" /> Academic Sessions</TabsTrigger>
+            <TabsTrigger value="general" className="justify-start sm:justify-center py-2.5 data-[state=active]:bg-muted"><Settings2 className="w-4 h-4 mr-2" /> General Config</TabsTrigger>
+            <TabsTrigger value="security" className="justify-start sm:justify-center py-2.5 data-[state=active]:bg-muted"><Shield className="w-4 h-4 mr-2" /> Security & Audit</TabsTrigger>
           </TabsList>
 
           <TabsContent value="academic" className="space-y-6 outline-none">
@@ -65,20 +63,20 @@ export default function AdminSettings() {
                 <CardDescription>Setup a new academic year.</CardDescription>
               </CardHeader>
               <CardContent>
-                <form onSubmit={handleCreateSession} className="flex flex-col md:flex-row gap-4 items-end">
-                  <div className="space-y-2 flex-1">
+                <form onSubmit={handleCreateSession} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                  <div className="space-y-2 w-full">
                     <Label>Session Name (e.g. 2024/2025)</Label>
                     <Input required value={newSessionData.name} onChange={e => setNewSessionData({...newSessionData, name: e.target.value})} />
                   </div>
-                  <div className="space-y-2 flex-1">
+                  <div className="space-y-2 w-full">
                     <Label>Start Date</Label>
                     <Input type="date" required value={newSessionData.start_date} onChange={e => setNewSessionData({...newSessionData, start_date: e.target.value})} />
                   </div>
-                  <div className="space-y-2 flex-1">
+                  <div className="space-y-2 w-full">
                     <Label>End Date</Label>
                     <Input type="date" required value={newSessionData.end_date} onChange={e => setNewSessionData({...newSessionData, end_date: e.target.value})} />
                   </div>
-                  <Button type="submit" className="bg-navy-700 hover:bg-navy-800 text-white" disabled={createSession.isPending}>
+                  <Button type="submit" className="bg-navy-700 hover:bg-navy-800 text-white w-full md:w-auto" disabled={createSession.isPending}>
                     <Plus className="w-4 h-4 mr-2" /> Add Session
                   </Button>
                 </form>
@@ -89,8 +87,8 @@ export default function AdminSettings() {
               <CardHeader>
                 <CardTitle>Manage Sessions & Terms</CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
-                <Table>
+              <CardContent className="p-0 overflow-x-auto">
+                <Table className="min-w-[680px]">
                   <TableHeader className="bg-muted/50">
                     <TableRow>
                       <TableHead className="pl-6">Session</TableHead>

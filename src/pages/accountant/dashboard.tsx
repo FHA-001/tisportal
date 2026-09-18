@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getCustomSession } from '@/lib/auth-utils';
 import { getTimeBasedGreeting } from '@/lib/greeting';
 import { useFinanceStats, useMonthlyRevenue, usePaymentMethodBreakdown, useSessionRevenue } from '@/hooks/use-finance';
-import { Banknote, Clock, CheckCircle, XCircle, TrendingUp, Calendar } from 'lucide-react';
+import { Banknote, Clock, CheckCircle, XCircle, TrendingUp, Calendar, Megaphone, Newspaper, ArrowRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { Button } from '@/components/ui/button';
 
 export default function AccountantDashboard() {
   const session = getCustomSession();
@@ -33,7 +34,7 @@ export default function AccountantDashboard() {
 
         <div className="space-y-6">
           {/* Finance Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             <Card className="card-premium border-border">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -92,7 +93,7 @@ export default function AccountantDashboard() {
           </div>
 
           {/* Payment Statistics */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             <Card className="card-premium border-border">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -142,15 +143,50 @@ export default function AccountantDashboard() {
             </Card>
           </div>
 
-          <Card className="card-premium border-border">
-            <CardContent className="p-6">
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">
-                  Detailed finance analytics and reports will be available in the Financial Reports section.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Communication */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card className="card-premium border-border">
+              <CardContent className="p-5 sm:p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Megaphone className="w-5 h-5 text-primary" />
+                      <p className="font-semibold">Announcements</p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      View important school notices and updates.
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="icon" asChild className="shrink-0">
+                    <a href="/accountant/announcements" aria-label="View announcements">
+                      <ArrowRight className="w-4 h-4" />
+                    </a>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="card-premium border-border">
+              <CardContent className="p-5 sm:p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Newspaper className="w-5 h-5 text-primary" />
+                      <p className="font-semibold">Newsletters</p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Open the latest published school newsletters.
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="icon" asChild className="shrink-0">
+                    <a href="/accountant/newsletters" aria-label="View newsletters">
+                      <ArrowRight className="w-4 h-4" />
+                    </a>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Charts Section */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -159,7 +195,8 @@ export default function AccountantDashboard() {
               <CardHeader>
                 <CardTitle>Monthly Revenue</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="overflow-x-auto">
+                <div className="min-w-[520px]">
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={monthlyRevenue}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -169,6 +206,7 @@ export default function AccountantDashboard() {
                     <Bar dataKey="revenue" fill="#3b82f6" />
                   </BarChart>
                 </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
 
@@ -177,7 +215,8 @@ export default function AccountantDashboard() {
               <CardHeader>
                 <CardTitle>Payment Methods Breakdown</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="overflow-x-auto">
+                <div className="min-w-[520px]">
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
@@ -190,7 +229,7 @@ export default function AccountantDashboard() {
                       fill="#8884d8"
                       dataKey="value"
                     >
-                      {paymentMethodChartData.map((entry, index) => (
+                      {paymentMethodChartData.map((_entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
@@ -198,6 +237,7 @@ export default function AccountantDashboard() {
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -207,7 +247,8 @@ export default function AccountantDashboard() {
             <CardHeader>
               <CardTitle>Revenue by Academic Session</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="overflow-x-auto">
+              <div className="min-w-[520px]">
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={sessionRevenue}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -217,6 +258,7 @@ export default function AccountantDashboard() {
                   <Bar dataKey="revenue" fill="#10b981" />
                 </BarChart>
               </ResponsiveContainer>
+              </div>
             </CardContent>
           </Card>
         </div>

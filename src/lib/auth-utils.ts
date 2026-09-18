@@ -108,10 +108,16 @@ export function getCustomSession(): CustomSession | null {
         (async () => {
           serverRefreshInFlight = true;
           try {
-            const { data } = await supabase.rpc('refresh_custom_session', { p_token: session.session_token });
-            // Only update refresh timestamp if server refresh succeeded
-            if (data?.success) {
+            const { data, error } = await supabase.rpc('refresh_custom_session', {
+              p_token: session.session_token,
+            });
+
+            if (!error && data?.success) {
               localStorage.setItem(SESSION_SERVER_REFRESH_KEY, currentTime.toString());
+            } else if (!error && data?.error) {
+              // Server rejected/revoked/expired the token. Remove the stale
+              // browser session so guards redirect the user to login.
+              clearCustomSession();
             }
           } catch {
             // Silent failure - will be caught on next RPC call
@@ -132,6 +138,30 @@ export function clearCustomSession(): void {
   localStorage.removeItem(SESSION_KEY);
   localStorage.removeItem(SESSION_TIMESTAMP_KEY);
   localStorage.removeItem(SESSION_SERVER_REFRESH_KEY);
+}
+
+export async function signOutCustomSession(): Promise<void> {
+  const session = getStoredCustomSession();
+
+  try {
+    if (session?.session_token) {
+      await supabase.rpc('logout_custom_session', {
+        p_token: session.session_token,
+      });
+    }
+  } finally {
+    // Local logout must always complete, even if the network/RPC is unavailable.
+    clearCustomSession();
+  }
+}
+
+function getStoredCustomSession(): CustomSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? (JSON.parse(raw) as CustomSession) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function isSessionExpired(): boolean {
@@ -224,7 +254,6 @@ export async function loginParent(
     p_email: email,
     p_password_hash: passwordHash,
   });
-  console.log('Parent login RPC response:', JSON.stringify(data, null, 2), error);
   if (error) return { error: error.message };
   
   if (data?.error === 'not_found' || data?.error === 'invalid_password') {

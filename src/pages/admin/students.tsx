@@ -3,16 +3,17 @@ import { DashboardLayout } from '@/components/shared/dashboard-layout';
 import { ProtectedRoute } from '@/components/shared/protected-route';
 import { PageHeader } from '@/components/shared/page-header';
 import { useStudents, useCreateStudentAdmin, useUpdateStudentAdmin, useDeleteStudentAdmin } from '@/hooks/use-users';
+import { useParents, useCreateParent, useStudentParents, useAssignStudentToParent } from '@/hooks/use-parents';
 import { useClasses } from '@/hooks/use-academics';
 import { adminResetPassword, generateUsernameFromName } from '@/lib/auth-utils';
 import { sanitizeFormData, validateStudentData } from '@/lib/validation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, Edit2, Trash2, Loader2, Eye, EyeOff, Upload, Download, RefreshCw } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Loader2, Eye, EyeOff, Upload, Download, RefreshCw, Link2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
@@ -25,6 +26,10 @@ export default function AdminStudents() {
   const updateStudent = useUpdateStudentAdmin();
   const deleteStudent = useDeleteStudentAdmin();
 
+  const { data: parents = [] } = useParents();
+  const createParent = useCreateParent();
+  const assignStudentToParent = useAssignStudentToParent();
+
   const [search, setSearch] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
@@ -32,6 +37,11 @@ export default function AdminStudents() {
   const [showPassword, setShowPassword] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [usernameManuallyEdited, setUsernameManuallyEdited] = useState(false);
+  const [parentMode, setParentMode] = useState<'none' | 'existing' | 'new'>('none');
+  const [selectedParentId, setSelectedParentId] = useState('');
+  const [relationship, setRelationship] = useState('Parent');
+  const [isPrimaryParent, setIsPrimaryParent] = useState(true);
+  const [newParentPassword, setNewParentPassword] = useState('Parent@12');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -51,17 +61,31 @@ export default function AdminStudents() {
     status: 'approved'
   });
 
+  const { data: linkedParents = [] } = useStudentParents(editingId || undefined);
+
+  const selectedExistingParent = parents.find((parent: any) => parent.id === selectedParentId);
+
+  const resetParentWorkflow = () => {
+    setParentMode('none');
+    setSelectedParentId('');
+    setRelationship('Parent');
+    setIsPrimaryParent(true);
+    setNewParentPassword('Parent@12');
+  };
+
   const filteredStudents = useMemo(() => {
     if (!search) return students;
     const lower = search.toLowerCase();
-    return students.filter(s => 
-      s.full_name.toLowerCase().includes(lower) || 
-      s.admission_number.toLowerCase().includes(lower) ||
-      s.username.toLowerCase().includes(lower)
+    return students.filter((s: any) =>
+      (s.full_name || '').toLowerCase().includes(lower) ||
+      (s.admission_number || '').toLowerCase().includes(lower) ||
+      (s.username || '').toLowerCase().includes(lower)
     );
   }, [students, search]);
 
   const handleOpenDialog = (student?: any) => {
+    resetParentWorkflow();
+
     if (student) {
       setEditingId(student.id);
       setFormData({
@@ -117,6 +141,80 @@ export default function AdminStudents() {
     }
   };
 
+  const buildParentFields = () => {
+    if (parentMode === 'existing' && selectedExistingParent) {
+      return {
+        parent_name: selectedExistingParent.full_name || '',
+        parent_phone: selectedExistingParent.phone_number || '',
+        parent_email: selectedExistingParent.email || '',
+      };
+    }
+
+    if (parentMode === 'new') {
+      return {
+        parent_name: formData.parent_name,
+        parent_phone: formData.parent_phone,
+        parent_email: formData.parent_email,
+      };
+    }
+
+    return {
+      parent_name: formData.parent_name,
+      parent_phone: formData.parent_phone,
+      parent_email: formData.parent_email,
+    };
+  };
+
+  const ensureParentAndLink = async (studentId: string) => {
+    if (parentMode === 'none') return;
+
+    let parent: any = null;
+
+    if (parentMode === 'existing') {
+      if (!selectedExistingParent) {
+        throw new Error('Please select an existing parent.');
+      }
+      parent = selectedExistingParent;
+    } else {
+      const email = formData.parent_email.trim().toLowerCase();
+
+      if (!formData.parent_name.trim() || !email) {
+        throw new Error('Parent name and email are required when creating a parent account.');
+      }
+
+      const matchedParent = parents.find(
+        (item: any) => (item.email || '').trim().toLowerCase() === email
+      );
+
+      if (matchedParent) {
+        parent = matchedParent;
+      } else {
+        parent = await createParent.mutateAsync({
+          full_name: formData.parent_name.trim(),
+          email,
+          password: newParentPassword || 'Parent@12',
+          phone_number: formData.parent_phone.trim() || undefined,
+          address: '',
+        });
+      }
+    }
+
+    const alreadyLinked = linkedParents.some(
+      (assignment: any) => assignment.parent_id === parent.id
+    );
+
+    if (!alreadyLinked) {
+      await assignStudentToParent.mutateAsync({
+        parent_id: parent.id,
+        student_id: studentId,
+        relationship,
+        is_primary: isPrimaryParent,
+      });
+    }
+
+    return parent;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -127,13 +225,40 @@ export default function AdminStudents() {
       return;
     }
     
-    const sanitizedData = sanitizeFormData(formData);
+    if (parentMode === 'existing' && !selectedParentId) {
+      toast.error('Please select an existing parent.');
+      return;
+    }
+
+    if (parentMode === 'new') {
+      if (!formData.parent_name.trim() || !formData.parent_email.trim()) {
+        toast.error('Parent name and email are required.');
+        return;
+      }
+
+      if (!newParentPassword || newParentPassword.length < 6) {
+        toast.error('Parent password must be at least 6 characters.');
+        return;
+      }
+    }
+
+    const sanitizedData = sanitizeFormData({
+      ...formData,
+      ...buildParentFields(),
+    });
+
+    // PostgreSQL DATE columns do not accept an empty string.
+    // Store no date as NULL instead.
+    const normalizedStudentData: any = {
+      ...sanitizedData,
+      date_of_birth: sanitizedData.date_of_birth?.trim() || null,
+    };
 
     // Check for duplicate admission number if provided
-    const admissionNumber = sanitizedData.admission_number?.trim();
+    const admissionNumber = normalizedStudentData.admission_number?.trim();
     if (admissionNumber) {
       const duplicate = students.find(
-        s => s.admission_number?.trim() === admissionNumber && s.id !== editingId
+        (s: any) => s.admission_number?.trim() === admissionNumber && s.id !== editingId
       );
       if (duplicate) {
         toast.error(`Admission number ${admissionNumber} is already assigned to ${duplicate.full_name}`);
@@ -141,28 +266,42 @@ export default function AdminStudents() {
       }
     }
 
-    if (editingId) {
-      // Don't send empty password
-      const { password, ...rest } = sanitizedData;
-      // Normalize blank admission_number to null for edit mode too
-      const normalizedAdmissionNumber = rest.admission_number?.trim() || null;
-      const submitData = {
-        ...rest,
-        admission_number: normalizedAdmissionNumber
-      };
-      if (password) {
-        submitData.password = password;
+    try {
+      let studentId = editingId;
+
+      if (editingId) {
+        // Don't send empty password
+        const { password, ...rest } = normalizedStudentData;
+        const normalizedAdmissionNumber = rest.admission_number?.trim() || null;
+        const submitData: any = {
+          ...rest,
+          admission_number: normalizedAdmissionNumber
+        };
+
+        if (password) {
+          submitData.password = password;
+        }
+
+        await updateStudent.mutateAsync({ id: editingId, data: submitData });
+      } else {
+        const submitData: any = {
+          ...normalizedStudentData,
+          admission_number: normalizedStudentData.admission_number?.trim() || null
+        };
+
+        const createdStudent = await createStudent.mutateAsync(submitData);
+        studentId = createdStudent?.id;
       }
-      await updateStudent.mutateAsync({ id: editingId, data: submitData });
-    } else {
-      // Normalize blank admission_number to null
-      const submitData = {
-        ...sanitizedData,
-        admission_number: sanitizedData.admission_number?.trim() || null
-      };
-      await createStudent.mutateAsync(submitData);
+
+      if (studentId && parentMode !== 'none') {
+        await ensureParentAndLink(studentId);
+      }
+
+      setIsDialogOpen(false);
+      resetParentWorkflow();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save student and parent relationship.');
     }
-    setIsDialogOpen(false);
   };
 
   const toggleStatus = async (id: string, currentStatus: string) => {
@@ -325,7 +464,7 @@ export default function AdminStudents() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredStudents.map((student, index) => (
+                    filteredStudents.map((student: any, index: number) => (
                       <TableRow key={student.id}>
                         <TableCell className="font-medium text-muted-foreground">{index + 1}</TableCell>
                         <TableCell className="font-medium text-navy-700 dark:text-navy-300">{student.admission_number}</TableCell>
@@ -353,7 +492,7 @@ export default function AdminStudents() {
                               variant="ghost" 
                               size="icon" 
                               onClick={() => handleResetPassword(student)} 
-                              title="Reset Password to Default (Student@123)"
+                              title="Reset Password to Default (Student@12)"
                               className="hover:bg-amber-50 dark:hover:bg-amber-950/50 hover:text-amber-600"
                             >
                               <RefreshCw className="w-4 h-4 text-amber-600" />
@@ -435,7 +574,7 @@ export default function AdminStudents() {
                   <Label>Class *</Label>
                   <Select required value={formData.class_id} onValueChange={handleClassChange}>
                     <SelectTrigger><SelectValue placeholder="Select a class" /></SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-72 overflow-y-auto">
                       {classes.map(c => (
                         <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                       ))}
@@ -457,27 +596,181 @@ export default function AdminStudents() {
               </div>
 
               <div className="border-t border-border pt-4">
-                <h3 className="font-heading font-semibold mb-4 text-sm text-muted-foreground uppercase tracking-wider">Parent/Guardian Info</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="parent_name">Parent Name</Label>
-                    <Input id="parent_name" value={formData.parent_name} onChange={e => setFormData({...formData, parent_name: e.target.value})} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="parent_phone">Parent Phone</Label>
-                    <Input id="parent_phone" value={formData.parent_phone} onChange={e => setFormData({...formData, parent_phone: e.target.value})} />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="parent_email">Parent Email (Required for notifications)</Label>
-                    <Input id="parent_email" type="email" value={formData.parent_email} onChange={e => setFormData({...formData, parent_email: e.target.value})} />
-                  </div>
+                <div className="flex items-center gap-2 mb-4">
+                  <Link2 className="w-4 h-4 text-muted-foreground" />
+                  <h3 className="font-heading font-semibold text-sm text-muted-foreground uppercase tracking-wider">
+                    Parent / Guardian Account
+                  </h3>
                 </div>
+
+                {editingId && linkedParents.length > 0 && (
+                  <div className="mb-4 rounded-lg border border-border bg-muted/30 p-3">
+                    <p className="text-sm font-medium mb-2">Currently linked</p>
+                    <div className="space-y-2">
+                      {linkedParents.map((assignment: any) => (
+                        <div key={assignment.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                          <span>
+                            {assignment.parents?.full_name || 'Parent'}
+                            {assignment.relationship ? ` • ${assignment.relationship}` : ''}
+                          </span>
+                          {assignment.is_primary && (
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2 mb-4">
+                  <Label>Parent setup</Label>
+                  <Select
+                    value={parentMode}
+                    onValueChange={(value: 'none' | 'existing' | 'new') => {
+                      setParentMode(value);
+                      setSelectedParentId('');
+
+                      if (value === 'none') {
+                        setRelationship('Parent');
+                        setIsPrimaryParent(true);
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose parent setup" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No parent account / keep existing details</SelectItem>
+                      <SelectItem value="existing">Link an existing parent</SelectItem>
+                      <SelectItem value="new">Create or reuse parent by email</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {parentMode === 'existing' && (
+                  <div className="space-y-2 mb-4">
+                    <Label>Select Existing Parent *</Label>
+                    <Select
+                      value={selectedParentId}
+                      onValueChange={(parentId) => {
+                        setSelectedParentId(parentId);
+                        const parent = parents.find((item: any) => item.id === parentId);
+
+                        if (parent) {
+                          setFormData((prev) => ({
+                            ...prev,
+                            parent_name: parent.full_name || '',
+                            parent_phone: parent.phone_number || '',
+                            parent_email: parent.email || '',
+                          }));
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a parent" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {parents.map((parent: any) => (
+                          <SelectItem key={parent.id} value={parent.id}>
+                            {parent.full_name} — {parent.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {parentMode === 'new' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="parent_name">Parent Name *</Label>
+                      <Input
+                        id="parent_name"
+                        value={formData.parent_name}
+                        onChange={(e) => setFormData({ ...formData, parent_name: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="parent_phone">Parent Phone</Label>
+                      <Input
+                        id="parent_phone"
+                        value={formData.parent_phone}
+                        onChange={(e) => setFormData({ ...formData, parent_phone: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="parent_email">Parent Email *</Label>
+                      <Input
+                        id="parent_email"
+                        type="email"
+                        value={formData.parent_email}
+                        onChange={(e) => setFormData({ ...formData, parent_email: e.target.value })}
+                        placeholder="Existing email will reuse that parent"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="parent_password">Parent Password</Label>
+                      <Input
+                        id="parent_password"
+                        type="text"
+                        value={newParentPassword}
+                        onChange={(e) => setNewParentPassword(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Used only if a new parent account is created. Default: Parent@12
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {parentMode !== 'none' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg border border-border p-3">
+                    <div className="space-y-2">
+                      <Label>Relationship *</Label>
+                      <Select value={relationship} onValueChange={setRelationship}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Parent">Parent</SelectItem>
+                          <SelectItem value="Father">Father</SelectItem>
+                          <SelectItem value="Mother">Mother</SelectItem>
+                          <SelectItem value="Guardian">Guardian</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex items-end">
+                      <label className="flex items-center gap-2 text-sm cursor-pointer min-h-10">
+                        <input
+                          type="checkbox"
+                          checked={isPrimaryParent}
+                          onChange={(e) => setIsPrimaryParent(e.target.checked)}
+                          className="h-4 w-4"
+                        />
+                        Primary contact
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-border">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                <Button type="submit" className="bg-navy-700 hover:bg-navy-800 text-white" disabled={createStudent.isPending || updateStudent.isPending}>
-                  {(createStudent.isPending || updateStudent.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                <Button type="submit" className="bg-navy-700 hover:bg-navy-800 text-white" disabled={
+                    createStudent.isPending ||
+                    updateStudent.isPending ||
+                    createParent.isPending ||
+                    assignStudentToParent.isPending
+                  }>
+                  {(
+                    createStudent.isPending ||
+                    updateStudent.isPending ||
+                    createParent.isPending ||
+                    assignStudentToParent.isPending
+                  ) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                   {editingId ? 'Save Changes' : 'Create Student'}
                 </Button>
               </div>

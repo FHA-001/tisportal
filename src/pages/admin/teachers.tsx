@@ -43,9 +43,9 @@ export default function AdminTeachers() {
   const filteredTeachers = useMemo(() => {
     if (!search) return teachers;
     const lower = search.toLowerCase();
-    return teachers.filter(t => 
-      t.full_name.toLowerCase().includes(lower) || 
-      t.email.toLowerCase().includes(lower)
+    return teachers.filter((t: any) =>
+      (t.full_name || '').toLowerCase().includes(lower) ||
+      (t.email || '').toLowerCase().includes(lower)
     );
   }, [teachers, search]);
 
@@ -86,7 +86,7 @@ export default function AdminTeachers() {
     
     if (editingId) {
       const { password, ...rest } = sanitizedData;
-      const submitData = password ? { ...rest, password } : rest;
+      const submitData: any = password ? { ...rest, password } : rest;
       await updateTeacher.mutateAsync({ id: editingId, data: submitData });
     } else {
       await createTeacher.mutateAsync(sanitizedData);
@@ -245,7 +245,7 @@ export default function AdminTeachers() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredTeachers.map((teacher, index) => (
+                    filteredTeachers.map((teacher: any, index: number) => (
                       <TableRow key={teacher.id}>
                         <TableCell className="font-medium text-muted-foreground">{index + 1}</TableCell>
                         <TableCell className="font-medium">{teacher.full_name}</TableCell>
@@ -272,7 +272,7 @@ export default function AdminTeachers() {
                               variant="ghost" 
                               size="icon" 
                               onClick={() => handleResetPassword(teacher)} 
-                              title="Reset Password to Default (Teacher@123)"
+                              title="Reset Password to Default (Teacher@12)"
                               className="hover:bg-amber-50 dark:hover:bg-amber-950/50 hover:text-amber-600"
                             >
                               <RefreshCw className="w-4 h-4 text-amber-600" />

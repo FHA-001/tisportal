@@ -521,7 +521,7 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -8, scale: 0.98 }}
                       transition={{ duration: 0.15 }}
-                      className="absolute right-0 top-11 z-40 w-[min(92vw,24rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl"
+                      className="fixed left-1/2 top-16 z-40 w-[calc(100vw-1.5rem)] max-w-sm -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-11 sm:w-[min(92vw,24rem)] sm:max-w-none sm:translate-x-0"
                     >
                       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
                         <div>
@@ -543,7 +543,7 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
                         )}
                       </div>
 
-                      <div className="max-h-[70vh] overflow-y-auto">
+                      <div className="max-h-[calc(100dvh-9rem)] sm:max-h-[70vh] overflow-y-auto">
                         {notificationsLoading ? (
                           <div className="px-4 py-8 text-center text-sm text-muted-foreground">
                             Loading notifications...

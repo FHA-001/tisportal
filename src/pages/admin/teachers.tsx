@@ -186,16 +186,23 @@ export default function AdminTeachers() {
         <PageHeader 
           title="Manage Teachers" 
           actions={
-            <div className="flex gap-2">
-              <Button onClick={downloadTemplate} variant="outline">
+            <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+              <Button onClick={downloadTemplate} variant="outline" className="w-full sm:w-auto">
                 <Download className="w-4 h-4 mr-2" />
                 Download Template
               </Button>
-              <Button onClick={() => setIsBulkDialogOpen(true)} variant="outline">
+              <Button
+                onClick={() => setIsBulkDialogOpen(true)}
+                variant="outline"
+                className="w-full sm:w-auto"
+              >
                 <Upload className="w-4 h-4 mr-2" />
                 Bulk Import
               </Button>
-              <Button onClick={() => handleOpenDialog()} className="bg-gold-600 hover:bg-gold-700 text-white border-0">
+              <Button
+                onClick={() => handleOpenDialog()}
+                className="w-full bg-gold-600 hover:bg-gold-700 text-white border-0 sm:w-auto"
+              >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Teacher
               </Button>
@@ -204,8 +211,8 @@ export default function AdminTeachers() {
         />
 
         <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm flex flex-col h-[calc(100vh-12rem)] min-h-[400px]">
-          <div className="p-4 border-b border-border flex items-center gap-4">
-            <div className="relative flex-1 max-w-md">
+          <div className="p-4 border-b border-border flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <div className="relative w-full flex-1 sm:max-w-md">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input 
                 placeholder="Search by name or email..." 
@@ -214,18 +221,18 @@ export default function AdminTeachers() {
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
-            <div className="text-sm text-muted-foreground font-medium">
+            <div className="self-start text-sm text-muted-foreground font-medium sm:self-auto">
               {filteredTeachers.length} {filteredTeachers.length === 1 ? 'teacher' : 'teachers'}
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-x-auto overflow-y-auto">
             {loadingTeachers ? (
               <div className="flex items-center justify-center h-full">
                 <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <Table>
+              <Table className="min-w-[850px]">
                 <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
                   <TableRow>
                     <TableHead className="w-12">S/N</TableHead>

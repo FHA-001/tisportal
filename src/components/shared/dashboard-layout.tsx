@@ -223,6 +223,7 @@ const accountantNavSections: NavSection[] = [
     title: 'Finance',
     items: [
       { label: 'Dashboard', path: '/accountant', icon: LayoutDashboard },
+      { label: 'Classes & Fees', path: '/accountant/classes', icon: BookOpen },
       { label: 'Payment Review', path: '/accountant/payment-review', icon: Banknote },
       { label: 'Financial Reports', path: '/accountant/financial-reports', icon: TrendingUp },
     ]

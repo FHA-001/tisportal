@@ -50,6 +50,7 @@ import TeacherNewsletters from '@/pages/teacher/newsletters';
 
 // Accountant
 import AccountantDashboard from '@/pages/accountant/dashboard';
+import AccountantClasses from '@/pages/accountant/classes';
 import AccountantPaymentReview from '@/pages/accountant/payment-review';
 import FinancialReports from '@/pages/accountant/financial-reports';
 import AccountantAnnouncements from '@/pages/accountant/announcements';
@@ -110,6 +111,7 @@ function Router() {
 
       {/* Accountant Routes */}
       <Route path="/accountant" component={AccountantDashboard} />
+      <Route path="/accountant/classes" component={AccountantClasses} />
       <Route path="/accountant/payment-review" component={AccountantPaymentReview} />
       <Route path="/accountant/financial-reports" component={FinancialReports} />
       <Route path="/accountant/announcements" component={AccountantAnnouncements} />

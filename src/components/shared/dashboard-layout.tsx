@@ -62,6 +62,46 @@ interface NotificationItem {
   created_at: string;
 }
 
+function getNotificationPath(
+  role: DashboardLayoutProps['role'],
+  notification: NotificationItem
+): string | null {
+  switch (notification.type) {
+    case 'announcement':
+      return `/${role}/announcements`;
+
+    case 'newsletter':
+      return `/${role}/newsletters`;
+
+    case 'homework':
+      return role === 'student' ? '/student/homework' : null;
+
+    case 'result':
+      if (role === 'student') return '/student/grades';
+      if (role === 'parent') return '/parent/grades';
+      if (role === 'teacher') return '/teacher/grading';
+      if (role === 'admin') return '/admin/reports';
+      return null;
+
+    case 'payment_approved':
+    case 'payment_rejected':
+      return role === 'parent' ? '/parent/payment-history' : null;
+
+    case 'payment_submitted':
+      return role === 'accountant' ? '/accountant/payment-review' : null;
+
+    case 'signup':
+      return role === 'admin' ? '/admin/signup-requests' : null;
+
+    case 'session':
+      if (role === 'admin') return '/admin/settings';
+      return `/${role}`;
+
+    default:
+      return null;
+  }
+}
+
 const adminNavSections: NavSection[] = [
   {
     title: 'Dashboard',
@@ -564,6 +604,12 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
                               onClick={() => {
                                 if (!notification.is_read) {
                                   markNotificationRead.mutate(notification.id);
+                                }
+
+                                const destination = getNotificationPath(role, notification);
+                                if (destination) {
+                                  setNotificationsOpen(false);
+                                  setLocation(destination);
                                 }
                               }}
                               className={`w-full text-left px-4 py-3 border-b border-border last:border-b-0 transition-colors hover:bg-accent/50 ${

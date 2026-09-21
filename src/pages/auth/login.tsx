@@ -4,8 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Eye, EyeOff, Loader2, AlertTriangle, Lock } from 'lucide-react';
-import { useLocation, Link } from 'wouter';
+import { Eye, EyeOff, Loader2, Lock } from 'lucide-react';
+import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { SCHOOL_CONFIG } from '@/lib/app-config';
 
@@ -82,7 +82,7 @@ export default function Login() {
     
     if (adminResult.error) {
       // All auth methods failed
-      const attempts = recordFailedAttempt(identifier);
+      recordFailedAttempt(identifier);
       const remaining = getRemainingAttempts(identifier);
       if (remaining > 0) {
         setErrorMsg(`Invalid credentials. ${remaining} attempts remaining.`);
@@ -113,7 +113,7 @@ export default function Login() {
     setIsLoading(false);
     
     if (error) {
-      const attempts = recordFailedAttempt(identifier);
+      recordFailedAttempt(identifier);
       const remaining = getRemainingAttempts(identifier);
       if (remaining > 0) {
         setErrorMsg(`${error}. ${remaining} attempts remaining.`);
@@ -147,7 +147,7 @@ export default function Login() {
     setIsLoading(false);
     
     if (error) {
-      const attempts = recordFailedAttempt(identifier);
+      recordFailedAttempt(identifier);
       const remaining = getRemainingAttempts(identifier);
       if (remaining > 0) {
         setErrorMsg(`${error}. ${remaining} attempts remaining.`);

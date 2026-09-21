@@ -144,33 +144,35 @@ export const useClassSubjects = (classId?: string, teacherId?: string) => {
   return useQuery({
     queryKey: ['class_subjects', classId, teacherId, session?.role, session?.id],
     queryFn: async () => {
-      // Teacher custom-auth path:
-      // class_subjects remains readable to custom-auth users, but the
-      // protected teachers table must not be joined here. Query the real
-      // assignment rows directly so grading receives the true class_subject id.
+      // Secure Teacher path
       if (session?.role === 'teacher') {
-        if (!session.id) {
-          throw new Error('Teacher session is missing an id. Please log in again.');
-        }
+  if (!session.id) {
+    throw new Error(
+      'Teacher session is missing an id. Please log in again.'
+    );
+  }
 
-        let query = supabase
-          .from('class_subjects')
-          .select(`
-            *,
-            classes (name, tier, level),
-            subjects (name, code)
-          `)
-          .eq('teacher_id', session.id);
+  let query = supabase
+    .from('class_subjects')
+    .select(`
+      *,
+      classes (name, tier, level),
+      subjects (name, code)
+    `)
+    .eq('teacher_id', session.id);
 
-        if (classId) query = query.eq('class_id', classId);
+  if (classId) {
+    query = query.eq('class_id', classId);
+  }
 
-        const { data, error } = await query;
-        if (error) throw error;
+  const { data, error } = await query;
 
-        return data || [];
-      }
+  if (error) throw error;
 
-      // Student custom-auth path: teacher PII is not required here.
+  return data || [];
+}
+
+      // Student custom-auth path
       if (session?.role === 'student') {
         let query = supabase.from('class_subjects').select(`
           *,
@@ -182,10 +184,11 @@ export const useClassSubjects = (classId?: string, teacherId?: string) => {
 
         const { data, error } = await query;
         if (error) throw error;
+
         return data || [];
       }
 
-      // Trusted Admin path retains the teacher name relationship.
+      // Trusted Admin path
       let query = supabase.from('class_subjects').select(`
         *,
         classes (name, tier, level),
@@ -198,8 +201,9 @@ export const useClassSubjects = (classId?: string, teacherId?: string) => {
 
       const { data, error } = await query;
       if (error) throw error;
+
       return data;
-    }
+    },
   });
 };
 

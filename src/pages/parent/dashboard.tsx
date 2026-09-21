@@ -261,6 +261,39 @@ export default function ParentDashboard() {
           </Card>
         </div>
 
+        <Card className="card-premium border-border mb-8">
+          <CardHeader>
+            <CardTitle className="text-lg font-heading">Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <a
+              href="/parent/payment-submissions"
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition-all hover:border-primary hover:shadow-md"
+            >
+              <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+                <Banknote className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="font-medium text-foreground">Submit Payment</h4>
+                <p className="text-sm text-muted-foreground">Upload a new school fee payment</p>
+              </div>
+            </a>
+
+            <a
+              href="/parent/grades"
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition-all hover:border-primary hover:shadow-md"
+            >
+              <div className="rounded-lg bg-amber-50 p-2 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+                <Award className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="font-medium text-foreground">View Results</h4>
+                <p className="text-sm text-muted-foreground">Open your children's academic results</p>
+              </div>
+            </a>
+          </CardContent>
+        </Card>
+
         <Card className="card-premium border-border">
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>

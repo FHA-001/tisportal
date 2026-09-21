@@ -16,6 +16,18 @@ import { Search, Plus, Loader2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
+type TeacherStudent = {
+  id: string;
+  full_name: string;
+  admission_number: string | null;
+  username: string;
+  gender?: string | null;
+  parent_phone?: string | null;
+  classes?: {
+    name?: string | null;
+  } | null;
+};
+
 export default function TeacherStudents() {
   const session = getCustomSession();
   const queryClient = useQueryClient();
@@ -25,7 +37,8 @@ export default function TeacherStudents() {
   
   const [selectedClass, setSelectedClass] = useState<string>('');
   
-  const { data: students = [], isLoading: loadingStudents } = useStudents('teacher', selectedClass);
+  const { data: studentsData = [], isLoading: loadingStudents } = useStudents('teacher', selectedClass);
+  const students = studentsData as TeacherStudent[];
 
   const [search, setSearch] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -52,11 +65,13 @@ export default function TeacherStudents() {
 
   const filteredStudents = useMemo(() => {
     if (!search) return students;
+
     const lower = search.toLowerCase();
-    return students.filter(s => 
-      s.full_name.toLowerCase().includes(lower) || 
-      s.admission_number.toLowerCase().includes(lower) ||
-      s.username.toLowerCase().includes(lower)
+
+    return students.filter((student) =>
+      (student.full_name ?? '').toLowerCase().includes(lower) ||
+      (student.admission_number ?? '').toLowerCase().includes(lower) ||
+      (student.username ?? '').toLowerCase().includes(lower)
     );
   }, [students, search]);
 

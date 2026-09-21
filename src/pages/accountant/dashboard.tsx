@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getCustomSession } from '@/lib/auth-utils';
 import { getTimeBasedGreeting } from '@/lib/greeting';
 import { useFinanceStats, useMonthlyRevenue, usePaymentMethodBreakdown, useSessionRevenue } from '@/hooks/use-finance';
-import { Banknote, Clock, CheckCircle, XCircle, TrendingUp, Calendar, Megaphone, Newspaper, ArrowRight } from 'lucide-react';
+import { Banknote, Clock, CheckCircle, XCircle, TrendingUp, Calendar, Megaphone, Newspaper, ArrowRight, ClipboardList } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Button } from '@/components/ui/button';
 
@@ -142,6 +142,40 @@ export default function AccountantDashboard() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Quick Actions */}
+          <Card className="card-premium border-border">
+            <CardHeader>
+              <CardTitle className="text-lg font-heading">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <a
+                href="/accountant/payment-review"
+                className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition-all hover:border-primary hover:shadow-md"
+              >
+                <div className="rounded-lg bg-blue-50 p-2 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                  <Banknote className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="font-medium text-foreground">Review Payments</h4>
+                  <p className="text-sm text-muted-foreground">Review pending payment submissions</p>
+                </div>
+              </a>
+
+              <a
+                href="/accountant/financial-reports"
+                className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition-all hover:border-primary hover:shadow-md"
+              >
+                <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  <ClipboardList className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="font-medium text-foreground">View Reports</h4>
+                  <p className="text-sm text-muted-foreground">Open financial reports and summaries</p>
+                </div>
+              </a>
+            </CardContent>
+          </Card>
 
           {/* Communication */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

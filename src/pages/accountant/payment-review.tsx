@@ -9,7 +9,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAllPaymentSubmissions, PaymentSubmission, generateSignedUrl, useApproveSubmission, useRejectSubmission } from '@/hooks/use-accountant';
 import { useAcademicSessions } from '@/hooks/use-academics';
-import { getCustomSession } from '@/lib/auth-utils';
 import { Banknote, Clock, CheckCircle, XCircle, FileText, Search, Eye, Loader2, X, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -19,7 +18,6 @@ export default function AccountantPaymentReview() {
   const [sessionFilter, setSessionFilter] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
   const [selectedSubmission, setSelectedSubmission] = useState<PaymentSubmission | null>(null);
-  const [proofUrl, setProofUrl] = useState<string | null>(null);
   const [loadingProof, setLoadingProof] = useState(false);
   const [remarks, setRemarks] = useState('');
   const [showApproveDialog, setShowApproveDialog] = useState(false);
@@ -29,7 +27,6 @@ export default function AccountantPaymentReview() {
   const { data: sessions = [] } = useAcademicSessions();
   const approveSubmission = useApproveSubmission();
   const rejectSubmission = useRejectSubmission();
-  const session = getCustomSession();
 
   const stats = {
     pending: submissions.filter((s: PaymentSubmission) => s.status === 'pending').length,
@@ -47,7 +44,6 @@ export default function AccountantPaymentReview() {
     setLoadingProof(true);
     try {
       const url = await generateSignedUrl(selectedSubmission.proof_url);
-      setProofUrl(url);
       window.open(url, '_blank');
     } catch (error: any) {
       toast.error(error.message);
@@ -58,7 +54,6 @@ export default function AccountantPaymentReview() {
 
   const handleCloseDetail = () => {
     setSelectedSubmission(null);
-    setProofUrl(null);
     setRemarks('');
     setShowApproveDialog(false);
     setShowRejectDialog(false);

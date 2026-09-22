@@ -5,6 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { ScrollToTop } from '@/components/shared/scroll-to-top';
 
+
 // Pages
 import Home from '@/pages/home';
 import Login from '@/pages/auth/login';
@@ -55,6 +56,7 @@ import AccountantPaymentReview from '@/pages/accountant/payment-review';
 import FinancialReports from '@/pages/accountant/financial-reports';
 import AccountantAnnouncements from '@/pages/accountant/announcements';
 import AccountantNewsletters from '@/pages/accountant/newsletters';
+import AccountantFeeConfigurationPage from '@/pages/accountant/fee-configuration';
 
 // Student
 import StudentDashboard from '@/pages/student/dashboard';
@@ -116,7 +118,8 @@ function Router() {
       <Route path="/accountant/financial-reports" component={FinancialReports} />
       <Route path="/accountant/announcements" component={AccountantAnnouncements} />
       <Route path="/accountant/newsletters" component={AccountantNewsletters} />
-
+      <Route path="/accountant/fee-configuration" component={AccountantFeeConfigurationPage} />
+      
       {/* Student Routes */}
       <Route path="/student" component={StudentDashboard} />
       <Route path="/student/grades" component={StudentGrades} />

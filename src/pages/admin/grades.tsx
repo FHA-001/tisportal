@@ -1,217 +1,313 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/shared/dashboard-layout';
 import { ProtectedRoute } from '@/components/shared/protected-route';
 import { PageHeader } from '@/components/shared/page-header';
-import { useClasses, useClassSubjects, useAcademicSessions } from '@/hooks/use-academics';
-import { useGrades } from '@/hooks/use-records';
+import { useClasses, useAcademicSessions } from '@/hooks/use-academics';
+import { useAdminClassResults } from '@/hooks/use-records';
 import { generateReportCardPdf } from '@/lib/reportCardPdf';
-import { computeClassRankings } from '@/lib/reportCardData';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Download, Filter } from 'lucide-react';
+import { BookOpenCheck, Download, Eye, FileQuestion, Loader2, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 
+type StudentGradeDetail = {
+  id: string;
+  subject: string;
+  test_1: number | null;
+  test_2: number | null;
+  project_1: number | null;
+  assignment_1: number | null;
+  exam: number | null;
+  total: number | null;
+  grade_letter: string | null;
+  remark: string | null;
+};
+
 export default function AdminGrades() {
-  const [selectedClass, setSelectedClass] = useState<string>('');
-  const [selectedSubject, setSelectedSubject] = useState<string>('');
-  const [selectedTerm, setSelectedTerm] = useState<string>('First Term');
+  const [selectedSession, setSelectedSession] = useState('');
+  const [selectedTerm, setSelectedTerm] = useState('First Term');
+  const [selectedClass, setSelectedClass] = useState('');
+  const [detailStudent, setDetailStudent] = useState<any | null>(null);
+  const [detailGrades, setDetailGrades] = useState<StudentGradeDetail[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [downloadingStudentId, setDownloadingStudentId] = useState<string | null>(null);
 
   const { data: classes = [] } = useClasses();
   const { data: sessions = [] } = useAcademicSessions();
-  const activeSession = sessions.find(s => s.is_active);
+  const activeSession = sessions.find((session) => session.is_active);
 
-  // Get subjects mapped to the selected class
-  const { data: classSubjects = [] } = useClassSubjects(selectedClass || 'none');
-  
-  // Use the specific class_subject_id based on selection
-  const targetClassSubject = classSubjects.find(cs => cs.subject_id === selectedSubject);
+  useEffect(() => {
+    if (!selectedSession && activeSession?.name) setSelectedSession(activeSession.name);
+  }, [selectedSession, activeSession?.name]);
 
-  const { data: grades = [], isLoading: loadingGrades } = useGrades({
-    class_subject_id: targetClassSubject?.id,
-    term: selectedTerm,
-    session: activeSession?.name
-  });
+  const { data: overview, isLoading, error } = useAdminClassResults(
+    selectedClass || undefined,
+    selectedTerm,
+    selectedSession || undefined
+  );
 
-  const getBadgeColor = (letter: string | null) => {
-    if (!letter) return 'bg-muted text-muted-foreground';
-    if (letter.startsWith('A')) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400';
-    if (letter.startsWith('B')) return 'bg-navy-100 text-navy-700 dark:bg-navy-900/40 dark:text-navy-400';
-    if (letter.startsWith('C') || letter.startsWith('D') || letter.startsWith('E')) return 'bg-gold-100 text-gold-700 dark:bg-gold-900/40 dark:text-gold-400';
-    if (letter.startsWith('F')) return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400';
-    return 'bg-muted text-muted-foreground';
+  const selectedClassData = classes.find((item) => item.id === selectedClass);
+
+  const summary = useMemo(() => ({
+    students: overview?.students.length ?? 0,
+    subjects: overview?.expected_subjects ?? 0,
+    complete: overview?.complete_count ?? 0,
+    incomplete: (overview?.incomplete_count ?? 0) + (overview?.no_grades_count ?? 0),
+  }), [overview]);
+
+  const fetchStudentGrades = async (studentId: string) => {
+    const { data, error } = await supabase
+      .from('grades')
+      .select(`
+        id,
+        test_1,
+        test_2,
+        project_1,
+        assignment_1,
+        exam,
+        total,
+        grade_letter,
+        remark,
+        class_subjects(subjects(name))
+      `)
+      .eq('student_id', studentId)
+      .eq('term', selectedTerm)
+      .eq('session', selectedSession);
+
+    if (error) throw error;
+
+    return (data ?? []).map((row: any) => ({
+      id: row.id,
+      subject: row.class_subjects?.subjects?.name || 'Unknown Subject',
+      test_1: row.test_1,
+      test_2: row.test_2,
+      project_1: row.project_1,
+      assignment_1: row.assignment_1,
+      exam: row.exam,
+      total: row.total,
+      grade_letter: row.grade_letter,
+      remark: row.remark,
+    })) as StudentGradeDetail[];
   };
 
-  const handleDownloadPdf = async (studentId: string, studentData: any) => {
+  const openStudentResult = async (student: any) => {
+    setDetailStudent(student);
+    setDetailGrades([]);
+    setDetailLoading(true);
     try {
-      toast.loading('Generating report card...', { id: 'pdf-gen' });
-      
-      // Fetch ALL grades for this student and term to build the full report card
-      const { data: allStudentGrades, error } = await supabase
-        .from('grades')
-        .select(`
-          *,
-          class_subjects(
-            subjects(name)
-          )
-        `)
-        .eq('student_id', studentId)
-        .eq('term', selectedTerm)
-        .eq('session', activeSession?.name || '');
+      setDetailGrades(await fetchStudentGrades(student.id));
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to load student result.');
+      setDetailStudent(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
-      if (error) throw error;
+  const handleDownloadPdf = async (student: any) => {
+    setDownloadingStudentId(student.id);
+    toast.loading('Generating report card...', { id: 'pdf-gen' });
 
-      if (!allStudentGrades || allStudentGrades.length === 0) {
+    try {
+      const grades = await fetchStudentGrades(student.id);
+      if (grades.length === 0) {
         toast.error('No grades found for this student in the selected term.', { id: 'pdf-gen' });
         return;
       }
 
-      const classId = studentData.class_id || selectedClass;
-      let rankings: Awaited<ReturnType<typeof computeClassRankings>> | null = null;
-      if (classId && activeSession?.name) {
-        try {
-          rankings = await computeClassRankings(classId, selectedTerm, activeSession.name);
-        } catch {
-          rankings = null;
-        }
-      }
+      await generateReportCardPdf(
+        {
+          full_name: student.full_name,
+          admission_number: student.admission_number || '',
+          class_name: student.class_name || selectedClassData?.name || '',
+          tier: student.tier || selectedClassData?.tier || '',
+        },
+        selectedTerm,
+        selectedSession,
+        grades
+      );
 
-      // Format data for PDF generator
-      const pdfGrades = allStudentGrades.map(g => ({
-        subject: g.class_subjects?.subjects?.name || 'Unknown Subject',
-        test_1: g.test_1,
-        test_2: g.test_2,
-        project_1: g.project_1,
-        assignment_1: g.assignment_1,
-        exam: g.exam,
-        total: g.total,
-        grade_letter: g.grade_letter,
-        remark: g.remark,
-      }));
-
-      const studentInfo = {
-        full_name: studentData.full_name,
-        admission_number: studentData.admission_number,
-        class_name: studentData.classes?.name || '',
-        tier: studentData.tier,
-      };
-
-      await generateReportCardPdf(studentInfo, selectedTerm, activeSession?.name, pdfGrades);
       toast.success('Report card downloaded successfully.', { id: 'pdf-gen' });
     } catch (err: any) {
-      toast.error(`Failed to generate PDF: ${err.message}`, { id: 'pdf-gen' });
+      toast.error(`Failed to generate PDF: ${err?.message || 'Unknown error'}`, { id: 'pdf-gen' });
+    } finally {
+      setDownloadingStudentId(null);
     }
+  };
+
+  const statusBadge = (status: string) => {
+    if (status === 'complete') {
+      return <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Complete</span>;
+    }
+    if (status === 'incomplete') {
+      return <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">Incomplete</span>;
+    }
+    return <span className="inline-flex rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">No Grades</span>;
   };
 
   return (
     <ProtectedRoute>
       <DashboardLayout role="admin">
-        <PageHeader title="View Grades & Report Cards" />
+        <PageHeader title="Class Results" subtitle="Review results by academic session, term, and class." />
 
-        <div className="bg-card rounded-xl border border-border shadow-sm mb-6 p-4">
-          <div className="flex flex-col md:flex-row gap-4 items-end">
-            <div className="space-y-2 w-full md:w-48">
-              <Label>Term</Label>
-              <Select value={selectedTerm} onValueChange={setSelectedTerm}>
-                <SelectTrigger><SelectValue placeholder="Select Term" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="First Term">First Term</SelectItem>
-                  <SelectItem value="Second Term">Second Term</SelectItem>
-                  <SelectItem value="Third Term">Third Term</SelectItem>
-                </SelectContent>
-              </Select>
+        <div className="space-y-6">
+          <Card className="border-border shadow-sm">
+            <CardContent className="pt-6">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Academic Session</Label>
+                  <Select value={selectedSession} onValueChange={(value) => { setSelectedSession(value); setSelectedClass(''); }}>
+                    <SelectTrigger><SelectValue placeholder="Select session" /></SelectTrigger>
+                    <SelectContent>
+                      {sessions.map((session) => (
+                        <SelectItem key={session.id} value={session.name}>
+                          {session.name}{session.is_active ? ' (Active)' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Term</Label>
+                  <Select value={selectedTerm} onValueChange={(value) => { setSelectedTerm(value); setSelectedClass(''); }}>
+                    <SelectTrigger><SelectValue placeholder="Select term" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="First Term">First Term</SelectItem>
+                      <SelectItem value="Second Term">Second Term</SelectItem>
+                      <SelectItem value="Third Term">Third Term</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Class</Label>
+                  <Select value={selectedClass} onValueChange={setSelectedClass} disabled={!selectedSession}>
+                    <SelectTrigger><SelectValue placeholder="Select class" /></SelectTrigger>
+                    <SelectContent>
+                      {classes.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {!selectedClass ? (
+            <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-dashed bg-muted/30">
+              <BookOpenCheck className="mb-3 h-9 w-9 text-muted-foreground/60" />
+              <p className="font-medium">Select a class to review results.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Choose the academic session, term, and class above.</p>
             </div>
-            <div className="space-y-2 w-full md:w-48">
-              <Label>Class</Label>
-              <Select value={selectedClass} onValueChange={(v) => { setSelectedClass(v); setSelectedSubject(''); }}>
-                <SelectTrigger><SelectValue placeholder="Select Class" /></SelectTrigger>
-                <SelectContent>
-                  {classes.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          ) : isLoading ? (
+            <div className="flex h-64 items-center justify-center rounded-xl border border-border bg-card">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-            <div className="space-y-2 w-full md:w-64">
-              <Label>Subject (Filtered by Class)</Label>
-              <Select value={selectedSubject} onValueChange={setSelectedSubject} disabled={!selectedClass || classSubjects.length === 0}>
-                <SelectTrigger>
-                  <SelectValue placeholder={!selectedClass ? "Select class first" : classSubjects.length === 0 ? "No subjects assigned" : "Select Subject"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {classSubjects.map(cs => (
-                    <SelectItem key={cs.subject_id} value={cs.subject_id}>{cs.subjects?.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          ) : error ? (
+            <div className="rounded-xl border border-destructive/40 bg-card p-6 text-sm text-destructive">
+              Failed to load class results: {error.message}
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <Card><CardContent className="pt-6"><div className="flex items-center gap-3"><Users className="h-5 w-5 text-primary" /><div><p className="text-xs text-muted-foreground">Students</p><p className="text-2xl font-bold">{summary.students}</p></div></div></CardContent></Card>
+                <Card><CardContent className="pt-6"><div><p className="text-xs text-muted-foreground">Subjects</p><p className="text-2xl font-bold">{summary.subjects}</p></div></CardContent></Card>
+                <Card><CardContent className="pt-6"><div><p className="text-xs text-muted-foreground">Complete</p><p className="text-2xl font-bold text-emerald-700">{summary.complete}</p></div></CardContent></Card>
+                <Card><CardContent className="pt-6"><div><p className="text-xs text-muted-foreground">Incomplete</p><p className="text-2xl font-bold text-amber-700">{summary.incomplete}</p></div></CardContent></Card>
+              </div>
+
+              <Card className="overflow-hidden border-border shadow-sm">
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[900px]">
+                      <TableHeader className="bg-muted/50">
+                        <TableRow>
+                          <TableHead>Student</TableHead>
+                          <TableHead>Admission #</TableHead>
+                          <TableHead className="text-center">Subjects</TableHead>
+                          <TableHead className="text-center">Completed</TableHead>
+                          <TableHead className="text-right">Average</TableHead>
+                          <TableHead className="text-center">Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(overview?.students ?? []).length === 0 ? (
+                          <TableRow><TableCell colSpan={7} className="h-28 text-center text-muted-foreground">No active students found in this class.</TableCell></TableRow>
+                        ) : overview?.students.map((student) => (
+                          <TableRow key={student.id}>
+                            <TableCell className="font-medium">{student.full_name}</TableCell>
+                            <TableCell className="font-mono text-xs">{student.admission_number || '-'}</TableCell>
+                            <TableCell className="text-center">{student.expected_subjects}</TableCell>
+                            <TableCell className="text-center">{student.completed_subjects}</TableCell>
+                            <TableCell className="text-right font-semibold">{student.completed_subjects > 0 ? `${student.average.toFixed(1)}%` : '-'}</TableCell>
+                            <TableCell className="text-center">{statusBadge(student.status)}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button variant="outline" size="sm" onClick={() => openStudentResult(student)}><Eye className="mr-1.5 h-4 w-4" />View</Button>
+                                <Button variant="outline" size="sm" onClick={() => handleDownloadPdf(student)} disabled={student.completed_subjects === 0 || downloadingStudentId === student.id}>
+                                  {downloadingStudentId === student.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}
+                                  PDF
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
 
-        {!selectedClass || !selectedSubject ? (
-          <div className="h-64 flex flex-col items-center justify-center border border-dashed rounded-xl bg-muted/30">
-            <Filter className="w-8 h-8 text-muted-foreground mb-3" />
-            <p className="text-muted-foreground">Select a class and subject to view grades.</p>
-          </div>
-        ) : loadingGrades ? (
-          <div className="h-64 flex items-center justify-center border border-border rounded-xl bg-card">
-            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : grades.length === 0 ? (
-          <div className="h-64 flex flex-col items-center justify-center border border-dashed rounded-xl bg-muted/30">
-            <p className="text-muted-foreground">No grades recorded for this subject and term.</p>
-          </div>
-        ) : (
-          <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
-            <Table>
-              <TableHeader className="bg-muted/50">
-                <TableRow>
-                  <TableHead>Student Name</TableHead>
-                  <TableHead className="text-right">T1</TableHead>
-                  <TableHead className="text-right">T2</TableHead>
-                  <TableHead className="text-right">Proj</TableHead>
-                  <TableHead className="text-right">Asgn</TableHead>
-                  <TableHead className="text-right">Exam</TableHead>
-                  <TableHead className="text-right font-bold">Total</TableHead>
-                  <TableHead className="text-center">Grade</TableHead>
-                  <TableHead className="text-right">Report Card</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {grades.map(g => (
-                  <TableRow key={g.id}>
-                    <TableCell className="font-medium">{g.students?.full_name}</TableCell>
-                    <TableCell className="text-right">{g.test_1 ?? '-'}</TableCell>
-                    <TableCell className="text-right">{g.test_2 ?? '-'}</TableCell>
-                    <TableCell className="text-right">{g.project_1 ?? '-'}</TableCell>
-                    <TableCell className="text-right">{g.assignment_1 ?? '-'}</TableCell>
-                    <TableCell className="text-right">{g.exam ?? '-'}</TableCell>
-                    <TableCell className="text-right font-bold text-navy-700 dark:text-navy-300">{g.total ?? '-'}</TableCell>
-                    <TableCell className="text-center">
-                      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm ${getBadgeColor(g.grade_letter)}`}>
-                        {g.grade_letter || '-'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="h-8 text-xs bg-navy-50 hover:bg-navy-100 text-navy-700 border-navy-200 dark:bg-navy-900/30 dark:border-navy-800 dark:text-navy-300"
-                        onClick={() => handleDownloadPdf(g.student_id, g.students)}
-                        title="Download Report Card PDF"
-                      >
-                        <Download className="w-3.5 h-3.5 mr-1.5" />
-                        PDF
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+        <Dialog open={!!detailStudent} onOpenChange={(open) => { if (!open) { setDetailStudent(null); setDetailGrades([]); } }}>
+          <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
+            <DialogHeader><DialogTitle>{detailStudent?.full_name || 'Student'} — {selectedTerm}</DialogTitle></DialogHeader>
+            {detailLoading ? (
+              <div className="flex h-48 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-muted-foreground" /></div>
+            ) : detailGrades.length === 0 ? (
+              <div className="flex h-48 flex-col items-center justify-center text-center">
+                <FileQuestion className="mb-3 h-8 w-8 text-muted-foreground/60" />
+                <p className="font-medium">No grades recorded.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <Table className="min-w-[850px]">
+                    <TableHeader className="bg-muted/50"><TableRow><TableHead>Subject</TableHead><TableHead className="text-right">T1</TableHead><TableHead className="text-right">T2</TableHead><TableHead className="text-right">Project</TableHead><TableHead className="text-right">Assignment</TableHead><TableHead className="text-right">Exam</TableHead><TableHead className="text-right">Total</TableHead><TableHead className="text-center">Grade</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {detailGrades.map((grade) => (
+                        <TableRow key={grade.id}>
+                          <TableCell className="font-medium">{grade.subject}</TableCell>
+                          <TableCell className="text-right">{grade.test_1 ?? '-'}</TableCell>
+                          <TableCell className="text-right">{grade.test_2 ?? '-'}</TableCell>
+                          <TableCell className="text-right">{grade.project_1 ?? '-'}</TableCell>
+                          <TableCell className="text-right">{grade.assignment_1 ?? '-'}</TableCell>
+                          <TableCell className="text-right">{grade.exam ?? '-'}</TableCell>
+                          <TableCell className="text-right font-bold">{grade.total ?? '-'}</TableCell>
+                          <TableCell className="text-center">{grade.grade_letter || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={() => handleDownloadPdf(detailStudent)} disabled={downloadingStudentId === detailStudent?.id}>
+                    {downloadingStudentId === detailStudent?.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                    Download Report Card
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </DashboardLayout>
     </ProtectedRoute>
   );

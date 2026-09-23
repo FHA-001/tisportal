@@ -3,55 +3,59 @@ import { supabase } from '@/lib/supabaseClient';
 import { hashPassword, getCustomSession } from '@/lib/auth-utils';
 import { toast } from 'sonner';
 
+export type StudentEnrollmentStatus = 'active' | 'inactive' | 'graduated' | 'withdrawn';
+
 // --- STUDENTS ---
 export const useStudents = (role: 'admin' | 'teacher' = 'admin', classId?: string) => {
   return useQuery({
     queryKey: ['students', role, classId],
     queryFn: async () => {
       if (role === 'admin') {
-        // Admin path: direct table access
         let query = supabase.from('students').select('*, classes(name, tier)');
-        if (classId) {
-          query = query.eq('class_id', classId);
-        }
+        if (classId) query = query.eq('class_id', classId);
         const { data, error } = await query.order('full_name', { ascending: true });
         if (error) throw error;
         return data;
-      } else {
-        // Teacher path: secure RPC with session-token authentication
-        const session = getCustomSession();
-
-        if (!classId) {
-          throw new Error('Class ID is required for teacher student queries');
-        }
-
-        if (!session || session.role !== 'teacher' || !session.session_token) {
-          throw new Error('Session expired or invalid. Please log in again.');
-        }
-
-        const { data, error } = await supabase.rpc('get_students_by_teacher', {
-          p_class_id: classId,
-          p_session_token: session.session_token
-        });
-
-        if (error) throw error;
-        return data;
       }
+
+      const session = getCustomSession();
+      if (!classId) throw new Error('Class ID is required for teacher student queries');
+      if (!session || session.role !== 'teacher' || !session.session_token) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+
+      const { data, error } = await supabase.rpc('get_students_by_teacher', {
+        p_class_id: classId,
+        p_session_token: session.session_token
+      });
+
+      if (error) throw error;
+      return data;
     }
   });
 };
 
 export const useCreateStudentAdmin = () => {
   const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async (payload: any) => {
       const p_hash = await hashPassword(payload.password);
       const { password, ...dataWithoutPassword } = payload;
-      const { data, error } = await supabase.from('students').insert([{
-        ...dataWithoutPassword,
-        password_hash: p_hash,
-        must_change_password: true,
-      }]).select().single();
+
+      const { data, error } = await supabase
+        .from('students')
+        .insert([{
+          ...dataWithoutPassword,
+          status: dataWithoutPassword.status || 'approved',
+          enrollment_status: dataWithoutPassword.enrollment_status || 'active',
+          is_active: dataWithoutPassword.is_active ?? true,
+          password_hash: p_hash,
+          must_change_password: true,
+        }])
+        .select()
+        .single();
+
       if (error) throw error;
       return data;
     },
@@ -65,6 +69,7 @@ export const useCreateStudentAdmin = () => {
 
 export const useUpdateStudentAdmin = () => {
   const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
       const updateData = { ...data };
@@ -72,7 +77,14 @@ export const useUpdateStudentAdmin = () => {
         updateData.password_hash = await hashPassword(updateData.password);
         delete updateData.password;
       }
-      const { data: res, error } = await supabase.from('students').update(updateData).eq('id', id).select().single();
+
+      const { data: res, error } = await supabase
+        .from('students')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
       if (error) throw error;
       return res;
     },
@@ -84,10 +96,73 @@ export const useUpdateStudentAdmin = () => {
   });
 };
 
+export const useUpdateStudentLifecycleAdmin = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      enrollmentStatus,
+    }: {
+      id: string;
+      enrollmentStatus: StudentEnrollmentStatus;
+    }) => {
+      const { data, error } = await supabase
+        .from('students')
+        .update({
+          enrollment_status: enrollmentStatus,
+          is_active: enrollmentStatus === 'active',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: ['accountantClassesFeeSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['accountantClassFeeOverview'] });
+
+      const labels: Record<StudentEnrollmentStatus, string> = {
+        active: 'Active',
+        inactive: 'Inactive',
+        graduated: 'Graduated',
+        withdrawn: 'Withdrawn',
+      };
+
+      toast.success(`Student marked as ${labels[variables.enrollmentStatus]}`);
+    },
+    onError: (err: any) => toast.error(err.message)
+  });
+};
+
 export const useDeleteStudentAdmin = () => {
   const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async (id: string) => {
+      const [gradesResult, paymentsResult, submissionsResult] = await Promise.all([
+        supabase.from('grades').select('id', { count: 'exact', head: true }).eq('student_id', id),
+        supabase.from('fee_payments').select('id', { count: 'exact', head: true }).eq('student_id', id),
+        supabase.from('payment_submissions').select('id', { count: 'exact', head: true }).eq('student_id', id),
+      ]);
+
+      const checkError = gradesResult.error || paymentsResult.error || submissionsResult.error;
+      if (checkError) throw checkError;
+
+      const gradesCount = gradesResult.count ?? 0;
+      const paymentsCount = paymentsResult.count ?? 0;
+      const submissionsCount = submissionsResult.count ?? 0;
+
+      if (gradesCount > 0 || paymentsCount > 0 || submissionsCount > 0) {
+        throw new Error(
+          'This student has academic or payment history and cannot be permanently deleted. Use Inactive, Graduated, or Withdrawn instead.'
+        );
+      }
+
       const { error } = await supabase.from('students').delete().eq('id', id);
       if (error) throw error;
     },
@@ -114,9 +189,7 @@ export const useTeachers = (role: 'admin' | 'student' = 'admin') => {
         return data;
       }
 
-      // Student custom-auth sessions must not read teachers_directory directly.
       const session = getCustomSession();
-
       if (!session || session.role !== 'student' || !session.session_token) {
         throw new Error('Session expired or invalid. Please log in again.');
       }
@@ -158,11 +231,7 @@ export const useUpdateTeacherAdmin = () => {
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
       const updateData = { ...data };
-
-      // Never send frontend-only password fields to the teachers table.
-      if (updateData.password) {
-        updateData.password_hash = await hashPassword(updateData.password);
-      }
+      if (updateData.password) updateData.password_hash = await hashPassword(updateData.password);
       delete updateData.password;
       delete updateData.confirmPassword;
 
@@ -231,9 +300,7 @@ export const useTeacherClasses = (teacherId?: string) => {
 
         const classId = (row as any).class_id;
 
-        if (!classId || !classInfo || uniqueClasses.has(classId)) {
-          continue;
-        }
+        if (!classId || !classInfo || uniqueClasses.has(classId)) continue;
 
         uniqueClasses.set(classId, {
           id: `class-${classId}`,

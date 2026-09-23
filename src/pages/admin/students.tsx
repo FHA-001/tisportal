@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import { DashboardLayout } from '@/components/shared/dashboard-layout';
 import { ProtectedRoute } from '@/components/shared/protected-route';
 import { PageHeader } from '@/components/shared/page-header';
-import { useStudents, useCreateStudentAdmin, useUpdateStudentAdmin, useDeleteStudentAdmin } from '@/hooks/use-users';
+import { useStudents, useCreateStudentAdmin, useUpdateStudentAdmin, useDeleteStudentAdmin, useUpdateStudentLifecycleAdmin } from '@/hooks/use-users';
 import { useParents, useCreateParent, useStudentParents, useAssignStudentToParent } from '@/hooks/use-parents';
 import { useClasses } from '@/hooks/use-academics';
 import { adminResetPassword, generateUsernameFromName } from '@/lib/auth-utils';
@@ -13,8 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, Edit2, Trash2, Loader2, Eye, EyeOff, Upload, Download, RefreshCw, Link2 } from 'lucide-react';
-import { Switch } from '@/components/ui/switch';
+import { Search, Plus, Loader2, Eye, EyeOff, Upload, Download, RefreshCw, Link2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 
@@ -25,12 +24,14 @@ export default function AdminStudents() {
   const createStudent = useCreateStudentAdmin();
   const updateStudent = useUpdateStudentAdmin();
   const deleteStudent = useDeleteStudentAdmin();
+  const updateLifecycle = useUpdateStudentLifecycleAdmin();
 
   const { data: parents = [] } = useParents();
   const createParent = useCreateParent();
   const assignStudentToParent = useAssignStudentToParent();
 
   const [search, setSearch] = useState('');
+  const [lifecycleFilter, setLifecycleFilter] = useState<'all' | 'active' | 'inactive' | 'graduated' | 'withdrawn'>('active');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -74,14 +75,19 @@ export default function AdminStudents() {
   };
 
   const filteredStudents = useMemo(() => {
-    if (!search) return students;
-    const lower = search.toLowerCase();
-    return students.filter((s: any) =>
-      (s.full_name || '').toLowerCase().includes(lower) ||
-      (s.admission_number || '').toLowerCase().includes(lower) ||
-      (s.username || '').toLowerCase().includes(lower)
-    );
-  }, [students, search]);
+    const lower = search.trim().toLowerCase();
+
+    return students.filter((student: any) => {
+      const lifecycle = student.enrollment_status || (student.is_active ? 'active' : 'inactive');
+      const matchesLifecycle = lifecycleFilter === 'all' || lifecycle === lifecycleFilter;
+      const matchesSearch = !lower ||
+        (student.full_name || '').toLowerCase().includes(lower) ||
+        (student.admission_number || '').toLowerCase().includes(lower) ||
+        (student.username || '').toLowerCase().includes(lower);
+
+      return matchesLifecycle && matchesSearch;
+    });
+  }, [students, search, lifecycleFilter]);
 
   const handleOpenDialog = (student?: any) => {
     resetParentWorkflow();
@@ -304,9 +310,11 @@ export default function AdminStudents() {
     }
   };
 
-  const toggleStatus = async (id: string, currentStatus: string) => {
-    const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
-    await updateStudent.mutateAsync({ id, data: { is_active: newStatus === 'Active' } });
+  const handleLifecycleChange = async (student: any, enrollmentStatus: 'active' | 'inactive' | 'graduated' | 'withdrawn') => {
+    await updateLifecycle.mutateAsync({
+      id: student.id,
+      enrollmentStatus,
+    });
   };
 
   const handleResetPassword = async (student: any) => {
@@ -359,7 +367,9 @@ export default function AdminStudents() {
         if (student.full_name && student.username && student.password && student.class_id && student.tier) {
           // Normalize blank admission_number to null
           student.admission_number = student.admission_number?.trim() || null;
-          student.status = 'Active';
+          student.status = 'approved';
+          student.enrollment_status = 'active';
+          student.is_active = true;
           studentsToCreate.push(student);
         }
       }
@@ -439,6 +449,18 @@ export default function AdminStudents() {
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
+            <Select value={lifecycleFilter} onValueChange={(value: 'all' | 'active' | 'inactive' | 'graduated' | 'withdrawn') => setLifecycleFilter(value)}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Lifecycle status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="graduated">Graduated</SelectItem>
+                <SelectItem value="withdrawn">Withdrawn</SelectItem>
+                <SelectItem value="all">All Students</SelectItem>
+              </SelectContent>
+            </Select>
             <div className="self-start text-sm text-muted-foreground font-medium sm:self-auto">
               {filteredStudents.length} {filteredStudents.length === 1 ? 'student' : 'students'}
             </div>
@@ -480,20 +502,26 @@ export default function AdminStudents() {
                         <TableCell>{student.classes?.name || '-'}</TableCell>
                         <TableCell>{student.gender || '-'}</TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Switch 
-                              checked={student.is_active} 
-                              onCheckedChange={() => toggleStatus(student.id, student.is_active ? 'Active' : 'Inactive')}
-                            />
-                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${student.is_active ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/50' : 'bg-red-50 text-red-600 dark:bg-red-900/50'}`}>
-                              {student.is_active ? 'Active' : 'Inactive'}
-                            </span>
-                          </div>
+                          <Select
+                            value={student.enrollment_status || (student.is_active ? 'active' : 'inactive')}
+                            onValueChange={(value: 'active' | 'inactive' | 'graduated' | 'withdrawn') => handleLifecycleChange(student, value)}
+                            disabled={updateLifecycle.isPending}
+                          >
+                            <SelectTrigger className="h-8 w-[145px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="active">Active</SelectItem>
+                              <SelectItem value="inactive">Inactive</SelectItem>
+                              <SelectItem value="graduated">Graduated</SelectItem>
+                              <SelectItem value="withdrawn">Withdrawn</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(student)} title="Edit Student">
-                              <Edit2 className="w-4 h-4 text-muted-foreground" />
+                            <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(student)}>
+                              Edit
                             </Button>
                             <Button 
                               variant="ghost" 
@@ -504,30 +532,6 @@ export default function AdminStudents() {
                             >
                               <RefreshCw className="w-4 h-4 text-amber-600" />
                             </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50" title="Delete Student">
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Student</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete {student.full_name}? This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction 
-                                    className="bg-red-600 hover:bg-red-700 text-white"
-                                    onClick={() => deleteStudent.mutate(student.id)}
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -764,22 +768,59 @@ export default function AdminStudents() {
                 )}
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-border">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                <Button type="submit" className="bg-navy-700 hover:bg-navy-800 text-white" disabled={
-                    createStudent.isPending ||
-                    updateStudent.isPending ||
-                    createParent.isPending ||
-                    assignStudentToParent.isPending
-                  }>
-                  {(
-                    createStudent.isPending ||
-                    updateStudent.isPending ||
-                    createParent.isPending ||
-                    assignStudentToParent.isPending
-                  ) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  {editingId ? 'Save Changes' : 'Create Student'}
-                </Button>
+              <div className="flex flex-col gap-3 pt-4 border-t border-border sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  {editingId && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50">
+                          Delete student
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Permanently delete this student?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Use permanent deletion only for a duplicate or a student created by mistake. Students with grades or payment history cannot be deleted; use Inactive, Graduated, or Withdrawn instead.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-red-600 text-white hover:bg-red-700"
+                            onClick={async () => {
+                              try {
+                                await deleteStudent.mutateAsync(editingId);
+                                setIsDialogOpen(false);
+                              } catch {
+                                // Mutation toast explains why deletion was blocked.
+                              }
+                            }}
+                          >
+                            Permanently Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </div>
+                <div className="flex justify-end gap-3">
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" className="bg-navy-700 hover:bg-navy-800 text-white" disabled={
+                      createStudent.isPending ||
+                      updateStudent.isPending ||
+                      createParent.isPending ||
+                      assignStudentToParent.isPending
+                    }>
+                    {(
+                      createStudent.isPending ||
+                      updateStudent.isPending ||
+                      createParent.isPending ||
+                      assignStudentToParent.isPending
+                    ) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    {editingId ? 'Save Changes' : 'Create Student'}
+                  </Button>
+                </div>
               </div>
             </form>
           </DialogContent>

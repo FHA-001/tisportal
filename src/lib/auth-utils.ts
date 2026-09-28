@@ -149,8 +149,17 @@ export async function signOutCustomSession(): Promise<void> {
         p_token: session.session_token,
       });
     }
+  } catch {
+    // Logout must still complete locally even if the compatibility RPC fails.
+  }
+
+  try {
+    // Teacher / Accountant / Parent now also have Supabase Auth sessions.
+    // For Students this is harmless and also clears any stale Supabase session.
+    await supabase.auth.signOut();
+  } catch {
+    // Local custom-session cleanup must still complete.
   } finally {
-    // Local logout must always complete, even if the network/RPC is unavailable.
     clearCustomSession();
   }
 }

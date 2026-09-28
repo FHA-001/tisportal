@@ -167,6 +167,7 @@ export const useStudentParents = (studentId?: string) => {
 
 export const useCreateParent = () => {
   const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async (parent: {
       full_name: string;
@@ -175,27 +176,39 @@ export const useCreateParent = () => {
       phone_number?: string;
       address?: string;
     }) => {
-      const passwordHash = await hashPassword(parent.password);
-      const { data, error } = await supabase
-        .from('parents')
-        .insert({
-          full_name: parent.full_name,
-          email: parent.email,
-          password_hash: passwordHash,
-          phone_number: parent.phone_number,
-          address: parent.address,
-          must_change_password: true,
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      const { data, error } = await supabase.functions.invoke(
+        'provision-portal-user',
+        {
+          body: {
+            role: 'parent',
+            full_name: parent.full_name,
+            email: parent.email,
+            password: parent.password,
+            phone_number: parent.phone_number || null,
+            address: parent.address || null,
+          },
+        },
+      );
+
+      if (error) {
+        throw new Error(error.message || 'Failed to create parent account');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to create parent account');
+      }
+
+      return data.profile;
     },
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['parents'] });
-      toast.success('Parent created successfully');
+      toast.success('Parent account created successfully');
     },
-    onError: (err: any) => toast.error(err.message)
+
+    onError: (err: any) => {
+      toast.error(err.message);
+    },
   });
 };
 

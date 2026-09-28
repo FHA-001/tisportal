@@ -206,23 +206,45 @@ export const useTeachers = (role: 'admin' | 'student' = 'admin') => {
 
 export const useCreateTeacherAdmin = () => {
   const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async (payload: any) => {
-      const p_hash = await hashPassword(payload.password);
-      const { password, ...dataWithoutPassword } = payload;
-      const { data, error } = await supabase.from('teachers').insert([{
-        ...dataWithoutPassword,
-        password_hash: p_hash,
-        must_change_password: true,
-      }]).select().single();
-      if (error) throw error;
-      return data;
+      const { data, error } = await supabase.functions.invoke(
+        'provision-portal-user',
+        {
+          body: {
+            role: payload.role || 'teacher',
+            full_name: payload.full_name,
+            email: payload.email,
+            password: payload.password,
+            phone_number: payload.phone_number || null,
+            gender: payload.gender || null,
+            date_of_birth: payload.date_of_birth || null,
+            status: payload.status || 'Active',
+            is_active: payload.is_active ?? true,
+          },
+        },
+      );
+
+      if (error) {
+        throw new Error(error.message || 'Failed to create staff account');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to create staff account');
+      }
+
+      return data.profile;
     },
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teachers'] });
-      toast.success('Teacher created successfully');
+      toast.success('Staff account created successfully');
     },
-    onError: (err: any) => toast.error(err.message)
+
+    onError: (err: any) => {
+      toast.error(err.message);
+    },
   });
 };
 

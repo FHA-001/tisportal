@@ -25,6 +25,12 @@ type PortalLoginResult = {
   role?: PortalRole;
   full_name?: string;
   email?: string;
+  must_change_password?: boolean;
+  error?: string;
+};
+
+type PortalPasswordChangeResult = {
+  success?: boolean;
   error?: string;
 };
 
@@ -59,7 +65,8 @@ export async function getPortalIdentity(): Promise<PortalIdentity> {
 }
 
 async function bootstrapCompatibilitySession(
-  expectedRole?: Exclude<PortalRole, 'admin'>
+  expectedRole?: Exclude<PortalRole, 'admin'>,
+  mustChangePassword = false,
 ): Promise<PortalLoginResult> {
   const existing = getCustomSession();
 
@@ -69,10 +76,18 @@ async function bootstrapCompatibilitySession(
     (!expectedRole || existing.role === expectedRole) &&
     existing.session_token
   ) {
+    if (existing.must_change_password !== mustChangePassword) {
+      setCustomSession({
+        ...existing,
+        must_change_password: mustChangePassword,
+      });
+    }
+
     return {
       role: existing.role,
       full_name: existing.full_name,
       email: existing.email,
+      must_change_password: mustChangePassword,
     };
   }
 
@@ -110,9 +125,7 @@ async function bootstrapCompatibilitySession(
       id: data.id,
       full_name: data.full_name || 'Parent',
       email: data.email || '',
-      // Supabase Auth now owns the password. Do not send migrated users
-      // through the legacy custom-password change flow.
-      must_change_password: false,
+      must_change_password: mustChangePassword,
       session_token: data.session_token,
     };
 
@@ -123,7 +136,7 @@ async function bootstrapCompatibilitySession(
       id: data.id,
       full_name: data.full_name || (role === 'accountant' ? 'Accountant' : 'Teacher'),
       email: data.email || '',
-      must_change_password: false,
+      must_change_password: mustChangePassword,
       session_token: data.session_token,
     };
 
@@ -134,19 +147,16 @@ async function bootstrapCompatibilitySession(
     role,
     full_name: data.full_name || undefined,
     email: data.email || undefined,
+    must_change_password: mustChangePassword,
   };
 }
 
 export async function loginPortalUser(
   email: string,
   password: string,
-  allowedRoles: PortalRole[]
+  allowedRoles: PortalRole[],
 ): Promise<PortalLoginResult> {
-  // Remove a stale Student/legacy custom session before starting a
-  // Supabase-authenticated login.
   clearCustomSession();
-
-  // Ensure a previous Supabase user cannot bleed into the new login attempt.
   await supabase.auth.signOut();
 
   const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -186,10 +196,14 @@ export async function loginPortalUser(
         role: 'admin',
         email: identity.email || email,
         full_name: identity.full_name || undefined,
+        must_change_password: false,
       };
     }
 
-    const compatibility = await bootstrapCompatibilitySession(identity.role);
+    const compatibility = await bootstrapCompatibilitySession(
+      identity.role,
+      identity.must_change_password === true,
+    );
 
     if (compatibility.error) {
       await supabase.auth.signOut();
@@ -206,7 +220,7 @@ export async function loginPortalUser(
 }
 
 export async function restorePortalSession(
-  expectedRole?: Exclude<PortalRole, 'admin'>
+  expectedRole?: Exclude<PortalRole, 'admin'>,
 ): Promise<PortalLoginResult> {
   const {
     data: { session },
@@ -231,17 +245,105 @@ export async function restorePortalSession(
       if (expectedRole) {
         return { error: 'Role mismatch.' };
       }
-      return { role: 'admin', email: session.user.email || undefined };
+
+      return {
+        role: 'admin',
+        email: session.user.email || undefined,
+        must_change_password: false,
+      };
     }
 
     if (expectedRole && identity.role !== expectedRole) {
       return { error: 'Role mismatch.' };
     }
 
-    return await bootstrapCompatibilitySession(identity.role);
+    return await bootstrapCompatibilitySession(
+      identity.role,
+      identity.must_change_password === true,
+    );
   } catch (error: any) {
     return { error: error?.message || 'Unable to restore portal session.' };
   }
+}
+
+export async function changePortalAuthPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<PortalPasswordChangeResult> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.user) {
+    return { error: 'unauthenticated' };
+  }
+
+  let identity: PortalIdentity;
+
+  try {
+    identity = await getPortalIdentity();
+  } catch (error: any) {
+    return { error: error?.message || 'Unable to verify portal account.' };
+  }
+
+  if (!identity.role || !['teacher', 'accountant', 'parent'].includes(identity.role)) {
+    return { error: 'unsupported_role' };
+  }
+
+  const email = session.user.email || identity.email || '';
+
+  if (!email) {
+    return { error: 'missing_email' };
+  }
+
+  const { error: reauthError } = await supabase.auth.signInWithPassword({
+    email,
+    password: currentPassword,
+  });
+
+  if (reauthError) {
+    const normalized = reauthError.message.toLowerCase();
+
+    if (
+      normalized.includes('invalid login credentials') ||
+      normalized.includes('invalid credentials')
+    ) {
+      return { error: 'invalid_password' };
+    }
+
+    return { error: reauthError.message };
+  }
+
+  const { error: passwordError } = await supabase.auth.updateUser({
+    password: newPassword,
+  });
+
+  if (passwordError) {
+    return { error: passwordError.message };
+  }
+
+  const { data, error: completionError } = await supabase.rpc(
+    'complete_portal_password_change',
+  );
+
+  if (completionError) {
+    return { error: completionError.message };
+  }
+
+  if (data?.error) {
+    return { error: String(data.error) };
+  }
+
+  const existing = getCustomSession();
+
+  if (existing && existing.role !== 'student' && existing.role === identity.role) {
+    setCustomSession({
+      ...existing,
+      must_change_password: false,
+    });
+  }
+
+  return { success: true };
 }
 
 export async function prepareForStudentLogin(): Promise<void> {

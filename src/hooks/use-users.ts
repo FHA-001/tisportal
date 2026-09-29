@@ -6,6 +6,51 @@ import { hashPassword, getCustomSession } from '@/lib/auth-utils';
 
 import { toast } from 'sonner';
 
+async function getEdgeFunctionErrorMessage(
+  error: any,
+  fallback: string,
+): Promise<string> {
+  try {
+    const response = error?.context;
+
+    if (response && typeof response.clone === 'function') {
+      const body = await response.clone().json();
+
+      const friendlyErrors: Record<string, string> = {
+        email_already_used_by_portal_profile:
+          'That email is already used by another portal account.',
+        email_already_exists_in_auth:
+          'That email is already registered to another authentication account.',
+        auth_profile_email_mismatch:
+          'This account has an email synchronization mismatch. Please resolve it before changing the email.',
+        profile_not_linked_to_auth:
+          'This profile is not linked to a Supabase Auth account.',
+        role_mismatch:
+          'The portal role does not match the linked authentication account.',
+        auth_email_duplicate_check_failed:
+          'Unable to verify whether that email is already in use. Please try again.',
+      };
+
+      if (body?.error && friendlyErrors[body.error]) {
+        return friendlyErrors[body.error];
+      }
+
+      if (typeof body?.detail === 'string' && body.detail.trim()) {
+        return body.detail;
+      }
+
+      if (typeof body?.error === 'string' && body.error.trim()) {
+        return body.error;
+      }
+    }
+  } catch {
+    // Fall through to the normal message below.
+  }
+
+  return error?.message || fallback;
+}
+
+
 
 
 export type StudentEnrollmentStatus = 'active' | 'inactive' | 'graduated' | 'withdrawn';
@@ -506,33 +551,84 @@ export const useUpdateTeacherAdmin = () => {
 
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
 
-      const updateData = { ...data };
+      // Read the current profile first so partial updates such as status toggles
+      // can still be sent to the server-owned update flow with complete data.
+      const { data: existing, error: existingError } = await supabase
+        .from('teachers')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-      // Teacher / Accountant passwords are owned by Supabase Auth.
-      // Normal profile editing must never write to the legacy password_hash.
+      if (existingError) throw existingError;
+      if (!existing) throw new Error('Staff profile not found');
+
+      const updateData = { ...existing, ...data };
+
+      // Passwords and identity links are server-owned / Supabase Auth-owned.
       delete updateData.password;
       delete updateData.confirmPassword;
       delete updateData.password_hash;
+      delete updateData.auth_user_id;
+      delete updateData.id;
+      delete updateData.created_at;
+      delete updateData.updated_at;
+      delete updateData.reset_token;
+      delete updateData.reset_token_expires;
 
+      const role = existing.role === 'accountant' ? 'accountant' : 'teacher';
 
+      const { data: result, error } = await supabase.functions.invoke(
+        'update-portal-user',
+        {
+          body: {
+            role,
+            profile_id: id,
+            full_name: updateData.full_name,
+            email: updateData.email,
+            phone_number: updateData.phone_number ?? null,
+            gender: updateData.gender ?? null,
+            date_of_birth: updateData.date_of_birth ?? null,
+            status: updateData.status ?? 'Active',
+            is_active:
+              typeof updateData.is_active === 'boolean'
+                ? updateData.is_active
+                : updateData.status !== 'Inactive',
+          },
+        },
+      );
 
-      const { data: res, error } = await supabase
+      if (error) {
+        throw new Error(
+          await getEdgeFunctionErrorMessage(
+            error,
+            'Failed to update staff account',
+          ),
+        );
+      }
 
-        .from('teachers')
+      if (!result?.success) {
+        const friendlyErrors: Record<string, string> = {
+          email_already_used_by_portal_profile:
+            'That email is already used by another portal account.',
+          email_already_exists_in_auth:
+            'That email is already registered in authentication.',
+          auth_profile_email_mismatch:
+            'This staff account has an email synchronization mismatch. Please resolve it before changing the email.',
+          profile_not_linked_to_auth:
+            'This staff profile is not linked to a Supabase Auth account.',
+          role_mismatch:
+            'The staff role does not match the linked account.',
+        };
 
-        .update(updateData)
+        throw new Error(
+          friendlyErrors[result?.error] ||
+            result?.detail ||
+            result?.error ||
+            'Failed to update staff account',
+        );
+      }
 
-        .eq('id', id)
-
-        .select()
-
-        .single();
-
-
-
-      if (error) throw error;
-
-      return res;
+      return result.profile;
 
     },
 
@@ -540,7 +636,7 @@ export const useUpdateTeacherAdmin = () => {
 
       queryClient.invalidateQueries({ queryKey: ['teachers'] });
 
-      toast.success('Teacher updated successfully');
+      toast.success('Staff account updated successfully');
 
     },
 

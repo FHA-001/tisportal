@@ -4,6 +4,51 @@ import { supabase } from '@/lib/supabaseClient';
 
 import { toast } from 'sonner';
 
+async function getEdgeFunctionErrorMessage(
+  error: any,
+  fallback: string,
+): Promise<string> {
+  try {
+    const response = error?.context;
+
+    if (response && typeof response.clone === 'function') {
+      const body = await response.clone().json();
+
+      const friendlyErrors: Record<string, string> = {
+        email_already_used_by_portal_profile:
+          'That email is already used by another portal account.',
+        email_already_exists_in_auth:
+          'That email is already registered to another authentication account.',
+        auth_profile_email_mismatch:
+          'This account has an email synchronization mismatch. Please resolve it before changing the email.',
+        profile_not_linked_to_auth:
+          'This profile is not linked to a Supabase Auth account.',
+        role_mismatch:
+          'The portal role does not match the linked authentication account.',
+        auth_email_duplicate_check_failed:
+          'Unable to verify whether that email is already in use. Please try again.',
+      };
+
+      if (body?.error && friendlyErrors[body.error]) {
+        return friendlyErrors[body.error];
+      }
+
+      if (typeof body?.detail === 'string' && body.detail.trim()) {
+        return body.detail;
+      }
+
+      if (typeof body?.error === 'string' && body.error.trim()) {
+        return body.error;
+      }
+    }
+  } catch {
+    // Fall through to the normal message below.
+  }
+
+  return error?.message || fallback;
+}
+
+
 import { getCustomSession } from '@/lib/auth-utils';
 
 
@@ -432,21 +477,74 @@ export const useUpdateParent = () => {
 
     mutationFn: async ({ id, ...parent }: { id: string } & any) => {
 
-      const { data, error } = await supabase
-
+      // Merge with the current profile so the Edge Function receives all
+      // required identity fields even if this mutation is ever called partially.
+      const { data: existing, error: existingError } = await supabase
         .from('parents')
-
-        .update(parent)
-
+        .select('*')
         .eq('id', id)
-
-        .select()
-
         .single();
 
-      if (error) throw error;
+      if (existingError) throw existingError;
+      if (!existing) throw new Error('Parent profile not found');
 
-      return data;
+      const updateData = { ...existing, ...parent };
+
+      delete updateData.password;
+      delete updateData.password_hash;
+      delete updateData.auth_user_id;
+      delete updateData.id;
+      delete updateData.created_at;
+      delete updateData.updated_at;
+
+      const { data: result, error } = await supabase.functions.invoke(
+        'update-portal-user',
+        {
+          body: {
+            role: 'parent',
+            profile_id: id,
+            full_name: updateData.full_name,
+            email: updateData.email,
+            phone_number: updateData.phone_number ?? null,
+            address: updateData.address ?? null,
+            is_active:
+              typeof updateData.is_active === 'boolean'
+                ? updateData.is_active
+                : true,
+          },
+        },
+      );
+
+      if (error) {
+        throw new Error(
+          await getEdgeFunctionErrorMessage(
+            error,
+            'Failed to update parent account',
+          ),
+        );
+      }
+
+      if (!result?.success) {
+        const friendlyErrors: Record<string, string> = {
+          email_already_used_by_portal_profile:
+            'That email is already used by another portal account.',
+          email_already_exists_in_auth:
+            'That email is already registered in authentication.',
+          auth_profile_email_mismatch:
+            'This parent account has an email synchronization mismatch. Please resolve it before changing the email.',
+          profile_not_linked_to_auth:
+            'This parent profile is not linked to a Supabase Auth account.',
+        };
+
+        throw new Error(
+          friendlyErrors[result?.error] ||
+            result?.detail ||
+            result?.error ||
+            'Failed to update parent account',
+        );
+      }
+
+      return result.profile;
 
     },
 

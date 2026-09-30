@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 
 export type PortalAccountRole = 'teacher' | 'accountant' | 'parent';
-export type PortalAccountAction = 'deactivate' | 'reactivate';
+export type PortalAccountAction = 'deactivate' | 'reactivate' | 'delete';
 
 type ManagePortalAccountPayload = {
   action: PortalAccountAction;
@@ -45,6 +45,16 @@ async function getEdgeFunctionErrorMessage(
           'The portal profile could not be reactivated.',
         auth_reactivation_failed:
           'The authentication account could not be reactivated.',
+        deactivate_before_delete:
+          'Deactivate this account before permanently deleting it.',
+        account_has_dependencies:
+          'This account cannot be permanently deleted because important school records are still linked to it.',
+        dependency_check_failed:
+          'The system could not safely verify whether this account has linked records.',
+        profile_delete_failed:
+          'The portal profile could not be permanently deleted.',
+        auth_cleanup_required:
+          'The portal profile was deleted, but the authentication account still requires administrator cleanup.',
       };
 
       if (body?.error && friendlyErrors[body.error]) {
@@ -92,12 +102,33 @@ export const useManagePortalAccountStatus = () => {
             error,
             action === 'deactivate'
               ? 'Failed to deactivate account'
-              : 'Failed to reactivate account',
+              : action === 'reactivate'
+                ? 'Failed to reactivate account'
+                : 'Failed to permanently delete account',
           ),
         );
       }
 
       if (!data?.success) {
+        if (data?.error === 'account_has_dependencies' && data?.dependencies) {
+          const labels: Record<string, string> = {
+            class_subjects: 'class/subject assignments',
+            classes: 'assigned classes',
+            homework: 'homework records',
+            payment_reviews: 'payment review records',
+            student_links: 'student associations',
+            payment_submissions: 'payment submissions',
+          };
+
+          const dependencyText = Object.entries(data.dependencies)
+            .map(([key, count]) => `${labels[key] || key}: ${count}`)
+            .join(', ');
+
+          throw new Error(
+            `This account cannot be permanently deleted because linked records still exist (${dependencyText}). Deactivate it instead to preserve school history.`,
+          );
+        }
+
         const friendlyErrors: Record<string, string> = {
           unauthenticated:
             'Your admin session has expired. Please log in again.',
@@ -129,7 +160,9 @@ export const useManagePortalAccountStatus = () => {
             data?.error ||
             (action === 'deactivate'
               ? 'Failed to deactivate account'
-              : 'Failed to reactivate account'),
+              : action === 'reactivate'
+                ? 'Failed to reactivate account'
+                : 'Failed to permanently delete account'),
         );
       }
 
@@ -145,8 +178,10 @@ export const useManagePortalAccountStatus = () => {
 
       if (variables.action === 'deactivate') {
         toast.success(`${target} deactivated successfully`);
-      } else {
+      } else if (variables.action === 'reactivate') {
         toast.success(`${target} reactivated successfully`);
+      } else {
+        toast.success(`${target} permanently deleted`);
       }
     },
 

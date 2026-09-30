@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 type PortalRole = "teacher" | "accountant" | "parent";
-type AccountAction = "deactivate" | "reactivate";
+type AccountAction = "deactivate" | "reactivate" | "delete";
 
 type ManagePortalUserStatusRequest = {
   action: AccountAction;
@@ -26,9 +26,34 @@ function json(body: unknown, status = 200) {
   });
 }
 
+async function countRows(
+  adminClient: any,
+  table: string,
+  column: string,
+  value: string,
+) {
+  const { count, error } = await adminClient
+    .from(table)
+    .select("*", {
+      count: "exact",
+      head: true,
+    })
+    .eq(column, value);
+
+  if (error) {
+    throw new Error(
+      `dependency_check_failed:${table}:${error.message}`,
+    );
+  }
+
+  return count ?? 0;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", {
+      headers: corsHeaders,
+    });
   }
 
   if (req.method !== "POST") {
@@ -141,12 +166,15 @@ Deno.serve(async (req) => {
 
     const action = payload.action;
     const role = payload.role;
+
     const profileId =
       typeof payload.profile_id === "string"
         ? payload.profile_id.trim()
         : "";
 
-    if (!["deactivate", "reactivate"].includes(action)) {
+    if (
+      !["deactivate", "reactivate", "delete"].includes(action)
+    ) {
       return json(
         {
           success: false,
@@ -156,7 +184,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!["teacher", "accountant", "parent"].includes(role)) {
+    if (
+      !["teacher", "accountant", "parent"].includes(role)
+    ) {
       return json(
         {
           success: false,
@@ -216,7 +246,8 @@ Deno.serve(async (req) => {
     }
 
     if (
-      (role === "teacher" || role === "accountant") &&
+      (role === "teacher" ||
+        role === "accountant") &&
       existingProfile.role !== role
     ) {
       return json(
@@ -244,9 +275,10 @@ Deno.serve(async (req) => {
     const {
       data: authUserData,
       error: authLookupError,
-    } = await adminClient.auth.admin.getUserById(
-      authUserId,
-    );
+    } =
+      await adminClient.auth.admin.getUserById(
+        authUserId,
+      );
 
     if (
       authLookupError ||
@@ -266,6 +298,202 @@ Deno.serve(async (req) => {
       );
     }
 
+    /*
+     * A7.3 — Protected permanent deletion
+     */
+    if (action === "delete") {
+      if (existingProfile.is_active !== false) {
+        return json({
+          success: false,
+          error: "deactivate_before_delete",
+        });
+      }
+
+      const dependencies: Record<string, number> = {};
+
+      try {
+        if (
+          role === "teacher" ||
+          role === "accountant"
+        ) {
+          dependencies.class_subjects =
+            await countRows(
+              adminClient,
+              "class_subjects",
+              "teacher_id",
+              profileId,
+            );
+
+
+          dependencies.homework =
+            await countRows(
+              adminClient,
+              "homework",
+              "teacher_id",
+              profileId,
+            );
+
+          dependencies.payment_reviews =
+            await countRows(
+              adminClient,
+              "payment_submissions",
+              "reviewed_by",
+              profileId,
+            );
+        } else {
+          dependencies.student_links =
+            await countRows(
+              adminClient,
+              "parent_students",
+              "parent_id",
+              profileId,
+            );
+
+          dependencies.payment_submissions =
+            await countRows(
+              adminClient,
+              "payment_submissions",
+              "parent_id",
+              profileId,
+            );
+        }
+      } catch (dependencyError) {
+        console.error(
+          "Permanent-delete dependency check failed",
+          dependencyError,
+        );
+
+        return json(
+          {
+            success: false,
+            error: "dependency_check_failed",
+            detail:
+              dependencyError instanceof Error
+                ? dependencyError.message
+                : null,
+          },
+          500,
+        );
+      }
+
+      const blockingDependencies =
+        Object.fromEntries(
+          Object.entries(dependencies).filter(
+            ([, count]) => count > 0,
+          ),
+        );
+
+      if (
+        Object.keys(blockingDependencies).length > 0
+      ) {
+        return json({
+          success: false,
+          error: "account_has_dependencies",
+          dependencies: blockingDependencies,
+        });
+      }
+
+      /*
+       * Revoke any remaining compatibility sessions.
+       */
+      const {
+        error: sessionRevokeError,
+      } = await adminClient
+        .from("custom_sessions")
+        .update({
+          revoked_at: new Date().toISOString(),
+        })
+        .eq("user_id", profileId)
+        .eq("role", role)
+        .is("revoked_at", null);
+
+      if (sessionRevokeError) {
+        console.error(
+          "Session revocation before permanent delete failed",
+          sessionRevokeError,
+        );
+
+        return json(
+          {
+            success: false,
+            error: "session_revocation_failed",
+            detail:
+              sessionRevokeError.message ?? null,
+          },
+          500,
+        );
+      }
+
+      /*
+       * Delete the portal profile first.
+       *
+       * This is safe because the account must already be
+       * deactivated, meaning the linked Auth user is banned.
+       */
+      const {
+        error: profileDeleteError,
+      } = await adminClient
+        .from(profileTable)
+        .delete()
+        .eq("id", profileId);
+
+      if (profileDeleteError) {
+        console.error(
+          "Permanent profile deletion failed",
+          profileDeleteError,
+        );
+
+        return json(
+          {
+            success: false,
+            error: "profile_delete_failed",
+            detail:
+              profileDeleteError.message ?? null,
+          },
+          500,
+        );
+      }
+
+      /*
+       * Now remove the linked Supabase Auth user.
+       */
+      const {
+        error: authDeleteError,
+      } =
+        await adminClient.auth.admin.deleteUser(
+          authUserId,
+        );
+
+      if (authDeleteError) {
+        console.error(
+          "CRITICAL: portal profile deleted but Auth cleanup failed",
+          authDeleteError,
+        );
+
+        return json(
+          {
+            success: false,
+            error: "auth_cleanup_required",
+            detail:
+              authDeleteError.message ?? null,
+            profile_deleted: true,
+            auth_user_deleted: false,
+          },
+          500,
+        );
+      }
+
+      return json({
+        success: true,
+        action,
+        role,
+        profile_id: profileId,
+        auth_user_id: authUserId,
+        profile_deleted: true,
+        auth_user_deleted: true,
+      });
+    }
+
     const previousIsActive =
       existingProfile.is_active === true;
 
@@ -273,24 +501,23 @@ Deno.serve(async (req) => {
       role === "parent"
         ? null
         : String(
-            existingProfile.status || "Active",
+            existingProfile.status ||
+              "Active",
           );
 
+    /*
+     * DEACTIVATE
+     */
     if (action === "deactivate") {
-      /*
-       * Supabase Auth supports ban_duration on server-side
-       * admin user updates. Use a very long ban instead of
-       * deleting the Auth identity so the account can later
-       * be reactivated safely.
-       */
       const {
         error: banError,
-      } = await adminClient.auth.admin.updateUserById(
-        authUserId,
-        {
-          ban_duration: "876000h",
-        },
-      );
+      } =
+        await adminClient.auth.admin.updateUserById(
+          authUserId,
+          {
+            ban_duration: "876000h",
+          },
+        );
 
       if (banError) {
         console.error(
@@ -302,7 +529,8 @@ Deno.serve(async (req) => {
           {
             success: false,
             error: "auth_deactivation_failed",
-            detail: banError.message ?? null,
+            detail:
+              banError.message ?? null,
           },
           500,
         );
@@ -312,12 +540,14 @@ Deno.serve(async (req) => {
         role === "parent"
           ? {
               is_active: false,
-              updated_at: new Date().toISOString(),
+              updated_at:
+                new Date().toISOString(),
             }
           : {
               is_active: false,
               status: "Inactive",
-              updated_at: new Date().toISOString(),
+              updated_at:
+                new Date().toISOString(),
             };
 
       const {
@@ -335,12 +565,13 @@ Deno.serve(async (req) => {
 
         const {
           error: authRollbackError,
-        } = await adminClient.auth.admin.updateUserById(
-          authUserId,
-          {
-            ban_duration: "none",
-          },
-        );
+        } =
+          await adminClient.auth.admin.updateUserById(
+            authUserId,
+            {
+              ban_duration: "none",
+            },
+          );
 
         if (authRollbackError) {
           console.error(
@@ -363,17 +594,15 @@ Deno.serve(async (req) => {
       }
 
       /*
-       * Migrated Teacher / Accountant / Parent roles still
-       * use compatibility custom_sessions until A8.
-       * Revoke those immediately so an existing compatibility
-       * token cannot continue to call protected RPCs.
+       * Revoke compatibility sessions immediately.
        */
       const {
         error: sessionRevokeError,
       } = await adminClient
         .from("custom_sessions")
         .update({
-          revoked_at: new Date().toISOString(),
+          revoked_at:
+            new Date().toISOString(),
         })
         .eq("user_id", profileId)
         .eq("role", role)
@@ -388,13 +617,18 @@ Deno.serve(async (req) => {
         const rollbackProfile =
           role === "parent"
             ? {
-                is_active: previousIsActive,
-                updated_at: new Date().toISOString(),
+                is_active:
+                  previousIsActive,
+                updated_at:
+                  new Date().toISOString(),
               }
             : {
-                is_active: previousIsActive,
-                status: previousStatus,
-                updated_at: new Date().toISOString(),
+                is_active:
+                  previousIsActive,
+                status:
+                  previousStatus,
+                updated_at:
+                  new Date().toISOString(),
               };
 
         const [
@@ -453,20 +687,20 @@ Deno.serve(async (req) => {
     }
 
     /*
-     * Reactivation:
-     * restore the portal profile first, then lift the Auth ban.
-     * If lifting the ban fails, restore the profile's old state.
+     * REACTIVATE
      */
     const profileUpdate =
       role === "parent"
         ? {
             is_active: true,
-            updated_at: new Date().toISOString(),
+            updated_at:
+              new Date().toISOString(),
           }
         : {
             is_active: true,
             status: "Active",
-            updated_at: new Date().toISOString(),
+            updated_at:
+              new Date().toISOString(),
           };
 
     const {
@@ -495,12 +729,13 @@ Deno.serve(async (req) => {
 
     const {
       error: unbanError,
-    } = await adminClient.auth.admin.updateUserById(
-      authUserId,
-      {
-        ban_duration: "none",
-      },
-    );
+    } =
+      await adminClient.auth.admin.updateUserById(
+        authUserId,
+        {
+          ban_duration: "none",
+        },
+      );
 
     if (unbanError) {
       console.error(
@@ -511,13 +746,18 @@ Deno.serve(async (req) => {
       const rollbackProfile =
         role === "parent"
           ? {
-              is_active: previousIsActive,
-              updated_at: new Date().toISOString(),
+              is_active:
+                previousIsActive,
+              updated_at:
+                new Date().toISOString(),
             }
           : {
-              is_active: previousIsActive,
-              status: previousStatus,
-              updated_at: new Date().toISOString(),
+              is_active:
+                previousIsActive,
+              status:
+                previousStatus,
+              updated_at:
+                new Date().toISOString(),
             };
 
       const {
@@ -538,7 +778,8 @@ Deno.serve(async (req) => {
         {
           success: false,
           error: "auth_reactivation_failed",
-          detail: unbanError.message ?? null,
+          detail:
+            unbanError.message ?? null,
           profile_rollback_succeeded:
             !profileRollbackError,
         },

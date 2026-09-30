@@ -28,6 +28,8 @@ import { Label } from '@/components/ui/label';
 
 import { Button } from '@/components/ui/button';
 
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+
 
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -52,6 +54,7 @@ import {
 
   UserX,
   UserCheck,
+  Trash2,
 
 
 
@@ -1529,6 +1532,46 @@ export default function AdminParents() {
                             <UserCheck className="w-4 h-4" />
                           )}
                         </Button>
+
+                        {parent.is_active === false && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={manageAccountStatus.isPending}
+                                title="Permanently Delete Account"
+                                className="hover:bg-red-100 dark:hover:bg-red-950/70 hover:text-red-700 text-red-700"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Permanently Delete Parent Account</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Permanently delete {parent.full_name}? This is only intended for accidental or test accounts. The server will refuse deletion if this parent has linked students or payment submissions. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-red-700 hover:bg-red-800 text-white"
+                                  onClick={() =>
+                                    manageAccountStatus.mutate({
+                                      action: 'delete',
+                                      role: 'parent',
+                                      profileId: parent.id,
+                                      displayName: parent.full_name,
+                                    })
+                                  }
+                                >
+                                  Permanently Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
 
 
 

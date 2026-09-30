@@ -51,7 +51,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 
 
-import { Search, Plus, Edit2, Loader2, Eye, EyeOff, Upload, Download, RefreshCw, UserX, UserCheck } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Loader2, Eye, EyeOff, Upload, Download, RefreshCw, UserX, UserCheck } from 'lucide-react';
 
 
 
@@ -1207,6 +1207,46 @@ export default function AdminTeachers() {
                                   </AlertDialogFooter>
                                 </AlertDialogContent>
                               </AlertDialog>
+
+                              {!(teacher.is_active !== false && teacher.status === 'Active') && (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      disabled={manageAccountStatus.isPending}
+                                      className="hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-950/70"
+                                      title="Permanently Delete Account"
+                                    >
+                                      <Trash2 className="w-4 h-4 text-red-700" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Permanently Delete Account</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Permanently delete {teacher.full_name}? This is only intended for accidental or test accounts. The server will refuse deletion if important school records are linked to this account. This action cannot be undone.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-red-700 hover:bg-red-800 text-white"
+                                        onClick={() =>
+                                          manageAccountStatus.mutate({
+                                            action: 'delete',
+                                            role: teacher.role === 'accountant' ? 'accountant' : 'teacher',
+                                            profileId: teacher.id,
+                                            displayName: teacher.full_name,
+                                          })
+                                        }
+                                      >
+                                        Permanently Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
 
 
 

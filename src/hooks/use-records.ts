@@ -278,20 +278,26 @@ export const useParentChildGrades = (studentId?: string, filters?: { term?: stri
 };
 
 // --- SECURE TEACHER GRADES ---
-export const useTeacherGrades = (classSubjectId?: string, filters?: { term?: string; session?: string }) => {
-  const session = getCustomSession();
-
+export const useTeacherGrades = (
+  classSubjectId?: string,
+  filters?: { term?: string; session?: string }
+) => {
   return useQuery({
-    queryKey: ['teacher-grades', session?.id, classSubjectId, filters],
-    queryFn: async () => {
-      if (!session?.session_token || session?.role !== 'teacher' || !classSubjectId) return [];
+    queryKey: ['teacher-grades', classSubjectId, filters],
 
-      const { data, error } = await supabase.rpc('get_teacher_grades', {
-        p_session_token: session.session_token,
-        p_class_subject_id: classSubjectId,
-        p_term: filters?.term || null,
-        p_session: filters?.session || null
-      });
+    queryFn: async () => {
+      if (!classSubjectId) {
+        return [];
+      }
+
+      const { data, error } = await supabase.rpc(
+        'get_teacher_grades',
+        {
+          p_class_subject_id: classSubjectId,
+          p_term: filters?.term || null,
+          p_session: filters?.session || null,
+        }
+      );
 
       if (error) throw error;
 
@@ -301,51 +307,85 @@ export const useTeacherGrades = (classSubjectId?: string, filters?: { term?: str
         class_subject_id: row.class_subject_id,
         term: row.term,
         session: row.session,
+
         test_1: row.test_1,
         test_2: row.test_2,
         project_1: row.project_1,
         assignment_1: row.assignment_1,
         exam: row.exam,
+
         total: row.total,
         grade_letter: row.grade_letter,
         remark: row.remark,
+
         created_at: row.created_at,
         updated_at: row.updated_at,
+
         students: {
           full_name: row.student_full_name,
-          admission_number: row.student_admission_number
-        }
+          admission_number: row.student_admission_number,
+          tier: row.student_tier,
+          class_id: row.student_class_id,
+        },
+
+        class_subjects: {
+          subject_id: row.class_subject_subject_id,
+          class_id: row.class_subject_class_id,
+
+          subjects: {
+            name: row.subject_name,
+            code: row.subject_code,
+          },
+
+          classes: {
+            name: row.class_subject_class_name,
+            tier: row.class_subject_class_tier,
+          },
+        },
       }));
     },
-    enabled: !!session?.session_token && session?.role === 'teacher' && !!classSubjectId
+
+    enabled: Boolean(classSubjectId),
   });
 };
 
 // --- SECURE TEACHER SAVE GRADES ---
 export const useSaveTeacherGrades = () => {
   const queryClient = useQueryClient();
-  const session = getCustomSession();
 
   return useMutation({
     mutationFn: async (payload: any[]) => {
-      if (!session?.session_token || session?.role !== 'teacher') throw new Error('Unauthorized');
-
-      const { data, error } = await supabase.rpc('save_teacher_grades', {
-        p_session_token: session.session_token,
-        p_grades: payload as any
-      });
+      const { data, error } = await supabase.rpc(
+        'save_teacher_grades',
+        {
+          p_grades: payload as any,
+        }
+      );
 
       if (error) throw error;
-      if (data?.success !== true) throw new Error(data?.error || 'Failed to save grades');
+
+      if (data?.success !== true) {
+        throw new Error(
+          data?.error || 'Failed to save grades'
+        );
+      }
 
       return data;
     },
+
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['teacher-grades'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-class-results'] });
+      queryClient.invalidateQueries({
+        queryKey: ['teacher-grades'],
+      });
+
       toast.success('Grades saved successfully');
     },
-    onError: (err: any) => toast.error(err.message || 'Failed to save grades')
+
+    onError: (err: any) => {
+      toast.error(
+        err.message || 'Failed to save grades'
+      );
+    },
   });
 };
 

@@ -2,23 +2,50 @@ import { useState } from 'react';
 import { DashboardLayout } from '@/components/shared/dashboard-layout';
 import { ProtectedRoute } from '@/components/shared/protected-route';
 import { PageHeader } from '@/components/shared/page-header';
-import { useClassSubjects, useAssignClassSubject, useRemoveClassSubject } from '@/hooks/use-academics';
-import { useClasses } from '@/hooks/use-academics';
-import { useSubjects } from '@/hooks/use-academics';
+import {
+  useClassSubjects,
+  useAssignClassSubject,
+  useRemoveClassSubject,
+  useClasses,
+  useSubjects
+} from '@/hooks/use-academics';
 import { useTeachers } from '@/hooks/use-users';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
 import { Loader2, Trash2, Link as LinkIcon } from 'lucide-react';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from '@/components/ui/alert-dialog';
 
 export default function AdminClassSubjects() {
   const { data: classSubjects = [], isLoading } = useClassSubjects();
   const { data: classes = [] } = useClasses();
   const { data: subjects = [] } = useSubjects();
   const { data: teachers = [] } = useTeachers();
-  
+
   const assignClassSubject = useAssignClassSubject();
   const removeClassSubject = useRemoveClassSubject();
 
@@ -30,8 +57,14 @@ export default function AdminClassSubjects() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     await assignClassSubject.mutateAsync(formData);
-    setFormData({ class_id: '', subject_id: '', teacher_id: '' });
+
+    setFormData({
+      class_id: '',
+      subject_id: '',
+      teacher_id: ''
+    });
   };
 
   const handleRemove = async (id: string) => {
@@ -41,29 +74,38 @@ export default function AdminClassSubjects() {
   return (
     <ProtectedRoute>
       <DashboardLayout role="admin">
-        <PageHeader 
-          title="Class-Subject Assignments" 
+        <PageHeader
+          title="Class-Subject Assignments"
           subtitle="Manage which teachers are assigned to teach specific subjects in each class"
         />
 
-        {/* Assignment Form */}
         <div className="bg-card rounded-xl border border-border p-6 shadow-sm mb-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="class">Select Class *</Label>
-                <Select 
-                  required 
-                  value={formData.class_id} 
-                  onValueChange={v => setFormData({...formData, class_id: v})}
+
+                <Select
+                  required
+                  value={formData.class_id}
+                  onValueChange={(value) =>
+                    setFormData((current) => ({
+                      ...current,
+                      class_id: value
+                    }))
+                  }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="class">
                     <SelectValue placeholder="Choose class" />
                   </SelectTrigger>
+
                   <SelectContent>
-                    {classes.map(c => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name} ({c.tier})
+                    {classes.map((classItem: any) => (
+                      <SelectItem
+                        key={classItem.id}
+                        value={classItem.id}
+                      >
+                        {classItem.name} ({classItem.tier})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -72,18 +114,29 @@ export default function AdminClassSubjects() {
 
               <div className="space-y-2">
                 <Label htmlFor="subject">Select Subject *</Label>
-                <Select 
-                  required 
-                  value={formData.subject_id} 
-                  onValueChange={v => setFormData({...formData, subject_id: v})}
+
+                <Select
+                  required
+                  value={formData.subject_id}
+                  onValueChange={(value) =>
+                    setFormData((current) => ({
+                      ...current,
+                      subject_id: value
+                    }))
+                  }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="subject">
                     <SelectValue placeholder="Choose subject" />
                   </SelectTrigger>
+
                   <SelectContent>
-                    {subjects.map(s => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name} {s.code && `(${s.code})`}
+                    {subjects.map((subject: any) => (
+                      <SelectItem
+                        key={subject.id}
+                        value={subject.id}
+                      >
+                        {subject.name}{' '}
+                        {subject.code ? `(${subject.code})` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -92,32 +145,47 @@ export default function AdminClassSubjects() {
 
               <div className="space-y-2">
                 <Label htmlFor="teacher">Select Teacher *</Label>
-                <Select 
-                  required 
-                  value={formData.teacher_id} 
-                  onValueChange={v => setFormData({...formData, teacher_id: v})}
+
+                <Select
+                  required
+                  value={formData.teacher_id}
+                  onValueChange={(value) =>
+                    setFormData((current) => ({
+                      ...current,
+                      teacher_id: value
+                    }))
+                  }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="teacher">
                     <SelectValue placeholder="Choose teacher" />
                   </SelectTrigger>
+
                   <SelectContent>
-                    {teachers.filter(t => t.is_active !== false).map(t => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.full_name}
-                      </SelectItem>
-                    ))}
+                    {teachers
+                      .filter((teacher: any) => teacher.is_active !== false)
+                      .map((teacher: any) => (
+                        <SelectItem
+                          key={teacher.id}
+                          value={teacher.id}
+                        >
+                          {teacher.full_name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             <div className="flex justify-end">
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="bg-emerald-600 hover:bg-emerald-700 text-white border-0"
                 disabled={assignClassSubject.isPending}
               >
-                {assignClassSubject.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {assignClassSubject.isPending && (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                )}
+
                 <LinkIcon className="w-4 h-4 mr-2" />
                 Assign Teacher to Subject
               </Button>
@@ -125,7 +193,6 @@ export default function AdminClassSubjects() {
           </form>
         </div>
 
-        {/* Assignments Table */}
         <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
           <div className="overflow-auto">
             {isLoading ? (
@@ -139,67 +206,108 @@ export default function AdminClassSubjects() {
                     <TableHead>Class</TableHead>
                     <TableHead>Subject</TableHead>
                     <TableHead>Teacher</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-right">
+                      Actions
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
+
                 <TableBody>
                   {classSubjects.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                      <TableCell
+                        colSpan={4}
+                        className="h-24 text-center text-muted-foreground"
+                      >
                         No class-subject assignments found.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    classSubjects.map((cs: any) => (
-                      <TableRow key={cs.id}>
-                        <TableCell className="font-medium">
-                          {cs.classes?.name || 'Unknown'} 
-                          <span className="text-muted-foreground text-sm ml-2">
-                            ({cs.classes?.tier || ''})
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {cs.subjects?.name || 'Unknown'}
-                          {cs.subjects?.code && (
+                    classSubjects.map((classSubject: any) => {
+                      const hasTeacher = Boolean(
+                        classSubject.teacher_id
+                      );
+
+                      return (
+                        <TableRow key={classSubject.id}>
+                          <TableCell className="font-medium">
+                            {classSubject.classes?.name || 'Unknown'}
+
                             <span className="text-muted-foreground text-sm ml-2">
-                              ({cs.subjects.code})
+                              ({classSubject.classes?.tier || ''})
                             </span>
-                          )}
-                        </TableCell>
-                        <TableCell>{cs.teachers?.full_name || 'Unknown'}</TableCell>
-                        <TableCell className="text-right">
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50"
-                                title="Remove Assignment"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Remove Assignment</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to remove this assignment? This will unassign the teacher from teaching this subject in this class.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction 
-                                  className="bg-red-600 hover:bg-red-700 text-white"
-                                  onClick={() => handleRemove(cs.id)}
-                                >
-                                  Remove
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                          </TableCell>
+
+                          <TableCell>
+                            {classSubject.subjects?.name || 'Unknown'}
+
+                            {classSubject.subjects?.code && (
+                              <span className="text-muted-foreground text-sm ml-2">
+                                ({classSubject.subjects.code})
+                              </span>
+                            )}
+                          </TableCell>
+
+                          <TableCell>
+                            {classSubject.teachers?.full_name ||
+                              'Unassigned'}
+                          </TableCell>
+
+                          <TableCell className="text-right">
+                            {hasTeacher ? (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50"
+                                    title="Unassign Teacher"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                      Unassign Teacher
+                                    </AlertDialogTitle>
+
+                                    <AlertDialogDescription>
+                                      This will remove the teacher from
+                                      this class-subject assignment. The
+                                      class and subject will remain
+                                      available for reassignment, and
+                                      existing scores for this assignment
+                                      will be cleared.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>
+                                      Cancel
+                                    </AlertDialogCancel>
+
+                                    <AlertDialogAction
+                                      className="bg-red-600 hover:bg-red-700 text-white"
+                                      onClick={() =>
+                                        handleRemove(classSubject.id)
+                                      }
+                                    >
+                                      Unassign
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">
+                                —
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>

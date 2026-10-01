@@ -2,10 +2,10 @@ import { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '@/components/shared/dashboard-layout';
 import { CustomSessionGuard } from '@/components/shared/custom-session-guard';
 import { PageHeader } from '@/components/shared/page-header';
-import { useClassSubjects, useAcademicSessions } from '@/hooks/use-academics';
+import { useTeacherClassSubjects, useAcademicSessions } from '@/hooks/use-academics';
 import { useStudents } from '@/hooks/use-users';
 import { useTeacherGrades, useSaveTeacherGrades } from '@/hooks/use-records';
-import { getCustomSession, getGradeLetter, getGradeRemark, computeTotal, getMaxScores } from '@/lib/auth-utils';
+import { getGradeLetter, getGradeRemark, computeTotal, getMaxScores } from '@/lib/auth-utils';
 import { validateGradeData } from '@/lib/validation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,9 +16,7 @@ import { Loader2, Save, Filter, Zap, RefreshCw, FileSpreadsheet } from 'lucide-r
 import { toast } from 'sonner';
 
 export default function TeacherGrading() {
-  const session = getCustomSession();
-  
-  const { data: assignmentsData = [] } = useClassSubjects(undefined, session?.id);
+  const { data: assignmentsData = [] } = useTeacherClassSubjects();
   const { data: sessionsData = [] } = useAcademicSessions();
   const assignments = assignmentsData as any[];
   const sessions = sessionsData as any[];

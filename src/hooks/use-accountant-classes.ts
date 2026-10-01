@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
-import { getCustomSession } from '@/lib/auth-utils';
 
 export interface AccountantClassFeeSummary {
   class_id: string;
@@ -37,29 +36,12 @@ export interface AccountantStudentFeeOverview {
   current_term: string | null;
 }
 
-function getAccountantSessionToken() {
-  const session = getCustomSession();
-
-  if (!session || session.role !== 'accountant' || !session.session_token) {
-    throw new Error('Session expired or invalid. Please log in again.');
-  }
-
-  return session.session_token;
-}
-
 export const useAccountantClassesFeeSummary = () => {
-  const session = getCustomSession();
-
   return useQuery({
-    queryKey: ['accountantClassesFeeSummary', session?.id],
+    queryKey: ['accountantClassesFeeSummary'],
     queryFn: async () => {
-      const token = getAccountantSessionToken();
-
       const { data, error } = await supabase.rpc(
-        'get_accountant_classes_fee_summary',
-        {
-          p_session_token: token,
-        }
+        'get_accountant_classes_fee_summary'
       );
 
       if (error) throw error;
@@ -70,30 +52,21 @@ export const useAccountantClassesFeeSummary = () => {
         active_student_count: Number(row.active_student_count ?? 0),
       })) as AccountantClassFeeSummary[];
     },
-    enabled:
-      !!session &&
-      session.role === 'accountant' &&
-      !!session.session_token,
   });
 };
 
 export const useAccountantClassFeeOverview = (classId?: string) => {
-  const session = getCustomSession();
-
   return useQuery({
-    queryKey: ['accountantClassFeeOverview', classId, session?.id],
+    queryKey: ['accountantClassFeeOverview', classId],
     queryFn: async () => {
       if (!classId) return [];
 
-      const token = getAccountantSessionToken();
-
       const { data, error } = await supabase.rpc(
-        'get_accountant_class_fee_overview',
-        {
-          p_session_token: token,
-          p_class_id: classId,
-        }
-      );
+  'get_accountant_class_fee_overview',
+  {
+    p_class_id: classId,
+  }
+);
 
       if (error) throw error;
 
@@ -104,10 +77,6 @@ export const useAccountantClassFeeOverview = (classId?: string) => {
         balance: Number(row.balance ?? 0),
       })) as AccountantStudentFeeOverview[];
     },
-    enabled:
-      !!classId &&
-      !!session &&
-      session.role === 'accountant' &&
-      !!session.session_token,
+    enabled: !!classId,
   });
 };

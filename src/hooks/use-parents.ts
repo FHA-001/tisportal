@@ -143,25 +143,8 @@ export const useParentChildren = () => {
 
     queryFn: async () => {
 
-      const session = getCustomSession();
-
-
-
-      if (!session || session.role !== 'parent' || !session.session_token) {
-
-        throw new Error('Session expired or invalid. Please log in again.');
-
-      }
-
-
-
-      // Use secure RPC function with session token
-
-      const { data, error } = await supabase.rpc('get_parent_children', {
-
-        p_session_token: session.session_token
-
-      });
+      // Use Supabase Auth RPC function (no session token required)
+      const { data, error } = await supabase.rpc('get_parent_children');
 
 
 

@@ -2,15 +2,15 @@ import { DashboardLayout } from '@/components/shared/dashboard-layout';
 import { CustomSessionGuard } from '@/components/shared/custom-session-guard';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { getCustomSession } from '@/lib/auth-utils';
 import { getTimeBasedGreeting } from '@/lib/greeting';
 import { useFinanceStats, useMonthlyRevenue, usePaymentMethodBreakdown, useSessionRevenue } from '@/hooks/use-finance';
+import { usePortalIdentity } from '@/hooks/use-portal-identity';
 import { Banknote, Clock, CheckCircle, XCircle, TrendingUp, Calendar, Megaphone, Newspaper, ArrowRight, ClipboardList } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Button } from '@/components/ui/button';
 
 export default function AccountantDashboard() {
-  const session = getCustomSession();
+  const { data: identity } = usePortalIdentity();
   const { data: stats, isLoading } = useFinanceStats();
   const { data: monthlyRevenue } = useMonthlyRevenue();
   const { data: paymentMethods } = usePaymentMethodBreakdown();
@@ -27,9 +27,9 @@ export default function AccountantDashboard() {
   return (
     <CustomSessionGuard role="accountant">
       <DashboardLayout role="accountant">
-        <PageHeader 
-          title="Accountant Dashboard" 
-          subtitle={getTimeBasedGreeting(session?.full_name?.split(' ')[0])}
+        <PageHeader
+          title="Accountant Dashboard"
+          subtitle={getTimeBasedGreeting(identity?.full_name?.split(' ')[0])}
         />
 
         <div className="space-y-6">

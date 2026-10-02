@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAcademicSessions } from '@/hooks/use-academics';
 import { useFinanceStats, useMonthlyRevenue } from '@/hooks/use-finance';
-import { getCustomSession } from '@/lib/auth-utils';
 import { Search, Download, FileText, Calendar, TrendingUp, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
@@ -21,7 +20,6 @@ export default function FinancialReports() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  const session = getCustomSession();
   const { data: sessions = [] } = useAcademicSessions();
   const { data: stats } = useFinanceStats();
   const { data: monthlyRevenue } = useMonthlyRevenue();

@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabaseClient';
 
 import { toast } from 'sonner';
 
+import { usePortalIdentity } from '@/hooks/use-portal-identity';
+
 async function getEdgeFunctionErrorMessage(
   error: any,
   fallback: string,
@@ -679,35 +681,23 @@ export const useRemoveStudentFromParent = () => {
 
 export const useFeePayments = (studentId?: string) => {
 
-  const session = getCustomSession();
+  const { data: portalIdentity } = usePortalIdentity();
 
-  const isParent = session?.role === 'parent';
+  const isParent = portalIdentity?.role === 'parent';
 
 
 
   return useQuery({
 
-    queryKey: ['feePayments', studentId, isParent ? session.id : null],
+    queryKey: ['feePayments', studentId, isParent ? portalIdentity?.profile_id : null],
 
     queryFn: async () => {
 
-      // Parent uses secure RPC
+      // Parent uses secure RPC (Supabase Auth - no session token)
 
       if (isParent) {
 
-        if (!session || !session.session_token) {
-
-          throw new Error('Session expired or invalid. Please log in again.');
-
-        }
-
-
-
-        const { data, error } = await supabase.rpc('get_parent_fee_payments', {
-
-          p_session_token: session.session_token
-
-        });
+        const { data, error } = await supabase.rpc('get_parent_fee_payments');
 
 
 
@@ -775,15 +765,15 @@ export const useFeePayments = (studentId?: string) => {
 
 export const useStudentFeeSummary = (studentId?: string, termId?: string, className?: string) => {
 
-  const session = getCustomSession();
+  const { data: portalIdentity } = usePortalIdentity();
 
-  const isParent = session?.role === 'parent';
+  const isParent = portalIdentity?.role === 'parent';
 
 
 
   return useQuery({
 
-    queryKey: ['studentFeeSummary', studentId, termId, className, isParent ? session.id : null],
+    queryKey: ['studentFeeSummary', studentId, termId, className, isParent ? portalIdentity?.profile_id : null],
 
     queryFn: async () => {
 
@@ -869,19 +859,11 @@ export const useStudentFeeSummary = (studentId?: string, termId?: string, classN
 
       if (isParent) {
 
-        if (!session || !session.session_token) {
-
-          throw new Error('Session expired or invalid. Please log in again.');
-
-        }
-
-
+        // Parent uses tokenless RPC (Supabase Auth)
 
         const { data: feePayments, error: paymentsError } = await supabase.rpc(
 
-          'get_parent_fee_payments',
-
-          { p_session_token: session.session_token }
+          'get_parent_fee_payments'
 
         );
 
@@ -1057,33 +1039,21 @@ export const useDeleteFeePayment = () => {
 
 export const useSchoolAccountDetails = () => {
 
-  const session = getCustomSession();
+  const { data: portalIdentity } = usePortalIdentity();
 
 
 
   return useQuery({
 
-    queryKey: ['schoolAccountDetails', session?.role, session?.id],
+    queryKey: ['schoolAccountDetails', portalIdentity?.role, portalIdentity?.profile_id],
 
     queryFn: async () => {
 
-      // Parent custom-auth sessions must use the secure RPC.
+      // Parent uses secure RPC (Supabase Auth - no session token)
 
-      if (session?.role === 'parent') {
+      if (portalIdentity?.role === 'parent') {
 
-        if (!session.session_token) {
-
-          throw new Error('Session expired or invalid. Please log in again.');
-
-        }
-
-
-
-        const { data, error } = await supabase.rpc('get_parent_school_account_details', {
-
-          p_session_token: session.session_token
-
-        });
+        const { data, error } = await supabase.rpc('get_parent_school_account_details');
 
 
 
@@ -1181,25 +1151,9 @@ export const usePaymentSubmissions = () => {
 
     queryFn: async () => {
 
-      const session = getCustomSession();
+      // Use secure RPC function (Supabase Auth - no session token)
 
-
-
-      if (!session || session.role !== 'parent' || !session.session_token) {
-
-        throw new Error('Session expired or invalid. Please log in again.');
-
-      }
-
-
-
-      // Use secure RPC function with session token
-
-      const { data, error } = await supabase.rpc('get_parent_payment_submissions', {
-
-        p_session_token: session.session_token
-
-      });
+      const { data, error } = await supabase.rpc('get_parent_payment_submissions');
 
 
 
@@ -1513,25 +1467,9 @@ export const useParentPaymentHistory = (statusFilter?: string, sessionFilter?: s
 
     queryFn: async () => {
 
-      // Get and validate custom session
+      // Fetch payment submissions using secure RPC (Supabase Auth - no session token)
 
-      const session = getCustomSession();
-
-      if (!session || session.role !== 'parent' || !session.session_token) {
-
-        throw new Error('Session expired or invalid. Please log in again.');
-
-      }
-
-
-
-      // Fetch payment submissions using secure RPC
-
-      const { data: submissions, error: submissionsError } = await supabase.rpc('get_parent_payment_submissions', {
-
-        p_session_token: session.session_token
-
-      });
+      const { data: submissions, error: submissionsError } = await supabase.rpc('get_parent_payment_submissions');
 
 
 
@@ -1595,13 +1533,9 @@ export const useParentPaymentHistory = (statusFilter?: string, sessionFilter?: s
 
 
 
-      // Fetch fee payments using secure RPC
+      // Fetch fee payments using secure RPC (Supabase Auth - no session token)
 
-      const { data: feePayments, error: feePaymentsError } = await supabase.rpc('get_parent_fee_payments', {
-
-        p_session_token: session.session_token
-
-      });
+      const { data: feePayments, error: feePaymentsError } = await supabase.rpc('get_parent_fee_payments');
 
 
 
@@ -1667,7 +1601,7 @@ export const useParentPaymentHistory = (statusFilter?: string, sessionFilter?: s
 
       // Combine and sort by date
 
-      const combined = [...submissionItems, ...paymentItems].sort((a, b) => 
+      const combined = [...submissionItems, ...paymentItems].sort((a, b) =>
 
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
 

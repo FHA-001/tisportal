@@ -51,9 +51,6 @@ async function getEdgeFunctionErrorMessage(
 }
 
 
-import { getCustomSession } from '@/lib/auth-utils';
-
-
 
 export interface PaymentHistoryItem {
 
@@ -1243,6 +1240,8 @@ export const useCreatePaymentSubmission = () => {
 
   const queryClient = useQueryClient();
 
+  const { data: portalIdentity } = usePortalIdentity();
+
   return useMutation({
 
     mutationFn: async (submission: {
@@ -1265,13 +1264,9 @@ export const useCreatePaymentSubmission = () => {
 
     }) => {
 
-      const session = getCustomSession();
+      if (!portalIdentity || portalIdentity.role !== 'parent') {
 
-
-
-      if (!session || session.role !== 'parent' || !session.session_token) {
-
-        throw new Error('Session expired or invalid. Please log in again.');
+        throw new Error('Unauthorized. Please log in as a parent.');
 
       }
 
@@ -1321,7 +1316,7 @@ export const useCreatePaymentSubmission = () => {
 
           const fileName = `${submissionData.student_id}_${Date.now()}_${crypto.randomUUID()}.${fileExt}`;
 
-          const filePath = `${session.id}/${fileName}`;
+          const filePath = `${portalIdentity.profile_id}/${fileName}`;
 
 
 
@@ -1357,7 +1352,7 @@ export const useCreatePaymentSubmission = () => {
 
 
 
-        // Step 2: Insert payment submission record using secure RPC
+        // Step 2: Insert payment submission record using secure RPC (Supabase Auth - no session token)
 
         const { data: rpcData, error: rpcError } = await supabase.rpc('create_payment_submission', {
 
@@ -1375,9 +1370,7 @@ export const useCreatePaymentSubmission = () => {
 
           p_bank_name: submissionData.bank_name || null,
 
-          p_proof_url: proofUrl || null,
-
-          p_session_token: session.session_token
+          p_proof_url: proofUrl || null
 
         });
 
@@ -1411,9 +1404,9 @@ export const useCreatePaymentSubmission = () => {
 
 
 
-          if (rpcData?.error === 'invalid_session') {
+          if (rpcData?.error === 'unauthorized') {
 
-            throw new Error('Session expired or invalid. Please log in again.');
+            throw new Error('Unauthorized. Please log in as a parent.');
 
           }
 

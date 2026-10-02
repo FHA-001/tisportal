@@ -230,15 +230,12 @@ export const useStudentGrades = (filters?: { term?: string; session?: string }) 
 
 // --- SECURE PARENT CHILD GRADES ---
 export const useParentChildGrades = (studentId?: string, filters?: { term?: string; session?: string }) => {
-  const session = getCustomSession();
-
   return useQuery({
-    queryKey: ['parent-child-grades', session?.id, studentId, filters],
+    queryKey: ['parent-child-grades', studentId, filters],
     queryFn: async () => {
-      if (!session?.session_token || session?.role !== 'parent' || !studentId) return [];
+      if (!studentId) return [];
 
       const { data, error } = await supabase.rpc('get_parent_child_grades', {
-        p_session_token: session.session_token,
         p_student_id: studentId,
         p_term: filters?.term || null,
         p_session: filters?.session || null
@@ -273,7 +270,7 @@ export const useParentChildGrades = (studentId?: string, filters?: { term?: stri
         }
       }));
     },
-    enabled: !!session?.session_token && session?.role === 'parent' && !!studentId
+    enabled: !!studentId
   });
 };
 

@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { useParentPaymentHistory, PaymentHistoryItem } from '@/hooks/use-parents';
 import { useParentChildren } from '@/hooks/use-parents';
 import { useAcademicSessions } from '@/hooks/use-academics';
-import { getCustomSession } from '@/lib/auth-utils';
+import { usePortalIdentity } from '@/hooks/use-portal-identity';
 import { downloadReceiptPDF, viewReceiptPDF } from '@/lib/receipt-generator';
 import { Banknote, Clock, CheckCircle, XCircle, FileText, Search, Eye, Download, X, Calendar, Filter } from 'lucide-react';
 import { toast } from 'sonner';
@@ -21,7 +21,7 @@ export default function ParentPaymentHistory() {
   const [studentFilter, setStudentFilter] = useState('');
   const [selectedPayment, setSelectedPayment] = useState<PaymentHistoryItem | null>(null);
 
-  const session = getCustomSession();
+  const { data: portalIdentity } = usePortalIdentity();
   const { data: children = [] } = useParentChildren();
   const { data: sessions = [] } = useAcademicSessions();
   const { data: payments = [], isLoading } = useParentPaymentHistory(
@@ -59,7 +59,7 @@ export default function ParentPaymentHistory() {
       toast.error('Receipt not available');
       return;
     }
-    
+
     downloadReceiptPDF({
       receiptNumber: selectedPayment.receipt_number,
       issueDate: selectedPayment.created_at,
@@ -72,7 +72,7 @@ export default function ParentPaymentHistory() {
       paymentReference: selectedPayment.payment_reference || undefined,
       bankName: selectedPayment.bank_name || undefined,
       paymentDate: selectedPayment.payment_date,
-      accountantName: session?.full_name,
+      accountantName: selectedPayment.parent_name, // For Parent receipts, use parent name as the receiving party
     });
   };
 
@@ -81,7 +81,7 @@ export default function ParentPaymentHistory() {
       toast.error('Receipt not available');
       return;
     }
-    
+
     viewReceiptPDF({
       receiptNumber: selectedPayment.receipt_number,
       issueDate: selectedPayment.created_at,
@@ -94,7 +94,7 @@ export default function ParentPaymentHistory() {
       paymentReference: selectedPayment.payment_reference || undefined,
       bankName: selectedPayment.bank_name || undefined,
       paymentDate: selectedPayment.payment_date,
-      accountantName: session?.full_name,
+      accountantName: selectedPayment.parent_name, // For Parent receipts, use parent name as the receiving party
     });
   };
 

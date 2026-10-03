@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParentChildren, useStudentFeeSummary } from '@/hooks/use-parents';
 import { useAcademicSessions } from '@/hooks/use-academics';
-import { getCustomSession } from '@/lib/auth-utils';
+import { usePortalIdentity } from '@/hooks/use-portal-identity';
 import { getTimeBasedGreeting } from '@/lib/greeting';
 import {
   Users,
@@ -190,7 +190,7 @@ function ChildFeeStatus({
 }
 
 export default function ParentDashboard() {
-  const session = getCustomSession();
+  const { data: portalIdentity } = usePortalIdentity();
   const { data: children = [], isLoading: childrenLoading } = useParentChildren();
   const { data: sessions = [] } = useAcademicSessions();
 
@@ -201,7 +201,7 @@ export default function ParentDashboard() {
       <DashboardLayout role="parent">
         <PageHeader
           title="Parent Dashboard"
-          subtitle={getTimeBasedGreeting(session?.full_name?.split(' ')[0])}
+          subtitle={getTimeBasedGreeting(portalIdentity?.full_name?.split(' ')[0])}
         />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

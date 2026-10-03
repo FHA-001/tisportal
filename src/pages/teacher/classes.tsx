@@ -2,14 +2,14 @@ import { DashboardLayout } from '@/components/shared/dashboard-layout';
 import { CustomSessionGuard } from '@/components/shared/custom-session-guard';
 import { PageHeader } from '@/components/shared/page-header';
 import { useClassSubjects } from '@/hooks/use-academics';
-import { getCustomSession } from '@/lib/auth-utils';
+import { usePortalIdentity } from '@/hooks/use-portal-identity';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BookOpen, Layers } from 'lucide-react';
 
 export default function TeacherClasses() {
-  const session = getCustomSession();
-  const { data: assignments = [], isLoading } = useClassSubjects(undefined, session?.id);
+  const { data: portalIdentity } = usePortalIdentity();
+  const { data: assignments = [], isLoading } = useClassSubjects(undefined, portalIdentity?.profile_id);
 
   return (
     <CustomSessionGuard role="teacher">

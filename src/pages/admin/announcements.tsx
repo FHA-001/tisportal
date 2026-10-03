@@ -9,12 +9,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAnnouncements, useCreateAnnouncement, useUpdateAnnouncement, useDeleteAnnouncement } from '@/hooks/use-announcements';
-import { getCustomSession } from '@/lib/auth-utils';
 import { Megaphone, Plus, Pencil, Trash2, Loader2, AlertTriangle, Calendar, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminAnnouncements() {
-  const session = getCustomSession();
   const { data: announcements = [], isLoading } = useAnnouncements();
   const createAnnouncement = useCreateAnnouncement();
   const updateAnnouncement = useUpdateAnnouncement();

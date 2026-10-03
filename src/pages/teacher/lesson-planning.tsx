@@ -10,14 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLessonPlans, useCreateLessonPlan, useUpdateLessonPlan, useDeleteLessonPlan } from '@/hooks/use-lesson-plans';
 import { useTeacherClasses } from '@/hooks/use-users';
-import { getCustomSession } from '@/lib/auth-utils';
+import { usePortalIdentity } from '@/hooks/use-portal-identity';
 import { FileEdit, Plus, Pencil, Trash2, Loader2, Calendar, Clock, BookOpen, Target, Package, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function TeacherLessonPlanning() {
-  const session = getCustomSession();
-  const { data: classes = [] } = useTeacherClasses(session?.id);
-  const { data: lessonPlans = [], isLoading } = useLessonPlans(session?.id);
+  const { data: portalIdentity } = usePortalIdentity();
+  const { data: classes = [] } = useTeacherClasses(portalIdentity?.profile_id);
+  const { data: lessonPlans = [], isLoading } = useLessonPlans(portalIdentity?.profile_id);
   const createLessonPlan = useCreateLessonPlan();
   const updateLessonPlan = useUpdateLessonPlan();
   const deleteLessonPlan = useDeleteLessonPlan();
@@ -57,7 +57,7 @@ export default function TeacherLessonPlanning() {
       description: formData.description,
       class_id: formData.class_id,
       subject_id: formData.subject_id,
-      teacher_id: session.id,
+      teacher_id: portalIdentity?.profile_id,
       lesson_date: formData.lesson_date,
       start_time: formData.start_time,
       end_time: formData.end_time,

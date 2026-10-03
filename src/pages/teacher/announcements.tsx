@@ -9,13 +9,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useTeacherAnnouncements, useCreateAnnouncement, useUpdateAnnouncement, useDeleteAnnouncement } from '@/hooks/use-announcements';
-import { getCustomSession } from '@/lib/auth-utils';
+import { usePortalIdentity } from '@/hooks/use-portal-identity';
 import { Megaphone, Plus, Pencil, Trash2, Loader2, AlertTriangle, Calendar, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function TeacherAnnouncements() {
-  const session = getCustomSession();
-  const { data: announcements = [], isLoading } = useTeacherAnnouncements(session?.id);
+  const { data: portalIdentity } = usePortalIdentity();
+  const { data: announcements = [], isLoading } = useTeacherAnnouncements(portalIdentity?.profile_id);
   const createAnnouncement = useCreateAnnouncement();
   const updateAnnouncement = useUpdateAnnouncement();
   const deleteAnnouncement = useDeleteAnnouncement();

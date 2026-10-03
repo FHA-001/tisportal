@@ -4,16 +4,16 @@ import { PageHeader } from '@/components/shared/page-header';
 import { StatCard } from '@/components/shared/stat-card';
 import { BookOpen, Award, ClipboardPenLine } from 'lucide-react';
 import { useClassSubjects } from '@/hooks/use-academics';
-import { getCustomSession } from '@/lib/auth-utils';
+import { usePortalIdentity } from '@/hooks/use-portal-identity';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { getTimeBasedGreeting } from '@/lib/greeting';
 
 export default function TeacherDashboard() {
-  const session = getCustomSession();
+  const { data: portalIdentity } = usePortalIdentity();
 
   const { data: assignments = [] } = useClassSubjects(
     undefined,
-    session?.id
+    portalIdentity?.profile_id
   );
 
   const uniqueClassIds = new Set(
@@ -29,7 +29,7 @@ export default function TeacherDashboard() {
         <PageHeader
           title="Teacher Dashboard"
           subtitle={getTimeBasedGreeting(
-            session?.full_name?.split(' ')[0]
+            portalIdentity?.full_name?.split(' ')[0]
           )}
         />
 

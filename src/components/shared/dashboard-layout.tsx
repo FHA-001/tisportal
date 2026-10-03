@@ -1,14 +1,14 @@
 import { ReactNode, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  LayoutDashboard, 
-  GraduationCap, 
-  Users, 
-  BookOpen, 
-  FileText, 
-  Calendar, 
-  Award, 
-  ClipboardList, 
+import {
+  LayoutDashboard,
+  GraduationCap,
+  Users,
+  BookOpen,
+  FileText,
+  Calendar,
+  Award,
+  ClipboardList,
   Settings,
   UserPlus,
   Menu,
@@ -35,6 +35,7 @@ import { ThemeToggle } from './theme-toggle';
 import { supabase } from '@/lib/supabaseClient';
 import { getCustomSession, signOutCustomSession } from '@/lib/auth-utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { usePortalIdentity } from '@/hooks/use-portal-identity';
 
 interface DashboardLayoutProps {
   role: 'admin' | 'teacher' | 'student' | 'parent' | 'accountant';
@@ -245,6 +246,8 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const queryClient = useQueryClient();
 
+  const { data: portalIdentity } = usePortalIdentity();
+
   const navSections = role === 'admin' ? adminNavSections : role === 'teacher' ? teacherNavSections : role === 'parent' ? parentNavSections : role === 'accountant' ? accountantNavSections : studentNavSections;
 
   const toggleSection = (title: string) => {
@@ -255,9 +258,11 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
   };
 
   const handleSignOut = async () => {
-    if (role === 'admin') {
+    // All roles except Student use Supabase Auth sign-out
+    if (role !== 'student') {
       await supabase.auth.signOut();
     } else {
+      // Student uses custom-session logout
       await signOutCustomSession();
     }
     setLocation('/login');
@@ -272,18 +277,22 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
     },
   });
 
-  const customSession = role !== 'admin' ? getCustomSession() : null;
+  const customSession = role === 'student' ? getCustomSession() : null;
 
-  const userName = role === 'admin' 
+  // Identity display: Use Supabase Auth for Admin/Parent/Teacher/Accountant, custom session for Student
+  const userName = role === 'admin'
     ? adminSession?.user?.email?.split('@')[0] || 'Admin'
-    : customSession?.full_name || 'User';
+    : role === 'student'
+    ? customSession?.full_name || 'Student'
+    : portalIdentity?.full_name || 'User';
 
   const userRole = role === 'admin' ? 'Administrator' : role === 'teacher' ? 'Teacher' : role === 'accountant' ? 'Accountant' : role === 'parent' ? 'Parent' : 'Student';
   const initial = userName.charAt(0).toUpperCase();
 
+  // Notification query key: Don't depend on customSession for Teacher/Accountant/Parent
   const notificationQueryKey = useMemo(
-    () => ['notifications', role, role === 'admin' ? adminSession?.user?.id ?? null : customSession?.id ?? null],
-    [role, adminSession?.user?.id, customSession?.id]
+    () => ['notifications', role, role === 'admin' ? adminSession?.user?.id ?? null : role === 'student' ? customSession?.id ?? null : portalIdentity?.profile_id ?? null],
+    [role, adminSession?.user?.id, customSession?.id, portalIdentity?.profile_id]
   );
 
   const { data: notifications = [], isLoading: notificationsLoading } = useQuery<NotificationItem[]>({
@@ -298,6 +307,32 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
         return (data ?? []) as NotificationItem[];
       }
 
+      // Teacher/Accountant/Parent: Use Supabase Auth notification RPCs
+      if (role === 'teacher') {
+        const { data, error } = await supabase.rpc('get_teacher_notifications', {
+          p_limit: 50,
+        });
+        if (error) throw error;
+        return (data ?? []) as NotificationItem[];
+      }
+
+      if (role === 'accountant') {
+        const { data, error } = await supabase.rpc('get_accountant_notifications', {
+          p_limit: 50,
+        });
+        if (error) throw error;
+        return (data ?? []) as NotificationItem[];
+      }
+
+      if (role === 'parent') {
+        const { data, error } = await supabase.rpc('get_parent_notifications', {
+          p_limit: 50,
+        });
+        if (error) throw error;
+        return (data ?? []) as NotificationItem[];
+      }
+
+      // Student: Use custom-session notifications
       if (!customSession?.session_token) return [];
 
       const { data, error } = await supabase.rpc('get_custom_notifications', {
@@ -309,7 +344,9 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
     },
     enabled: role === 'admin'
       ? Boolean(adminSession?.user?.id)
-      : Boolean(customSession?.session_token),
+      : role === 'student'
+      ? Boolean(customSession?.session_token)
+      : true, // Teacher/Accountant/Parent don't need custom session for Supabase Auth
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
@@ -327,6 +364,35 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
         return data;
       }
 
+      // Teacher/Accountant/Parent: Use Supabase Auth notification RPCs
+      if (role === 'teacher') {
+        const { data, error } = await supabase.rpc('mark_teacher_notification_read', {
+          p_notification_id: notificationId,
+        });
+        if (error) throw error;
+        if (data?.success === false) throw new Error(data.error || 'Failed to mark notification as read');
+        return data;
+      }
+
+      if (role === 'accountant') {
+        const { data, error } = await supabase.rpc('mark_accountant_notification_read', {
+          p_notification_id: notificationId,
+        });
+        if (error) throw error;
+        if (data?.success === false) throw new Error(data.error || 'Failed to mark notification as read');
+        return data;
+      }
+
+      if (role === 'parent') {
+        const { data, error } = await supabase.rpc('mark_parent_notification_read', {
+          p_notification_id: notificationId,
+        });
+        if (error) throw error;
+        if (data?.success === false) throw new Error(data.error || 'Failed to mark notification as read');
+        return data;
+      }
+
+      // Student: Use custom-session notifications
       if (!customSession?.session_token) {
         throw new Error('No valid session. Please log in again.');
       }
@@ -353,6 +419,29 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
         return data;
       }
 
+      // Teacher/Accountant/Parent: Use Supabase Auth notification RPCs
+      if (role === 'teacher') {
+        const { data, error } = await supabase.rpc('mark_all_teacher_notifications_read');
+        if (error) throw error;
+        if (data?.success === false) throw new Error(data.error || 'Failed to mark notifications as read');
+        return data;
+      }
+
+      if (role === 'accountant') {
+        const { data, error } = await supabase.rpc('mark_all_accountant_notifications_read');
+        if (error) throw error;
+        if (data?.success === false) throw new Error(data.error || 'Failed to mark notifications as read');
+        return data;
+      }
+
+      if (role === 'parent') {
+        const { data, error } = await supabase.rpc('mark_all_parent_notifications_read');
+        if (error) throw error;
+        if (data?.success === false) throw new Error(data.error || 'Failed to mark notifications as read');
+        return data;
+      }
+
+      // Student: Use custom-session notifications
       if (!customSession?.session_token) {
         throw new Error('No valid session. Please log in again.');
       }

@@ -890,7 +890,9 @@ export async function loginStudent(
 
 
 
-  const passwordHash = await hashPassword(password);
+  // Send plaintext password; server handles bcrypt hashing
+  // Note: RPC parameter is named p_password_hash for compatibility with deployed function
+  // but it now receives plaintext password server-side
 
 
 
@@ -902,7 +904,7 @@ export async function loginStudent(
 
 
 
-    p_password_hash: passwordHash,
+    p_password_hash: password,
 
 
 
@@ -1519,20 +1521,11 @@ export async function createStudentByTeacher(payload: {
   parent_phone?: string;
   parent_email?: string;
 }) {
-  const passwordHash = await hashPassword(payload.password);
-
-  const {
-    password: _password,
-    ...studentData
-  } = payload;
-
+  // Send plaintext password; server handles bcrypt hashing
   const { data, error } = await supabase.rpc(
     'create_student_by_teacher_auth',
     {
-      p: {
-        ...studentData,
-        password_hash: passwordHash
-      }
+      p: payload
     }
   );
 
@@ -1565,11 +1558,11 @@ export async function createStudentByTeacher(payload: {
     };
   }
 
-  if (data?.error === 'invalid_password_hash') {
+  if (data?.error === 'invalid_password') {
     return {
       error: {
         message:
-          'Student password could not be prepared securely. Please try again.'
+          'Password must be at least 8 characters long.'
       }
     };
   }

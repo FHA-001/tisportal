@@ -4,17 +4,18 @@ import { ProtectedRoute } from '@/components/shared/protected-route';
 import { PageHeader } from '@/components/shared/page-header';
 import { useClasses, useAcademicSessions } from '@/hooks/use-academics';
 import { useAdminClassResults } from '@/hooks/use-records';
-import { generateReportCardPdf } from '@/lib/reportCardPdf';
+import { generateReportCardPdf, buildReportCardDoc } from '@/lib/reportCardPdf';
 import { calculateCumulativeAverage, groupGradesByTerm } from '@/lib/reportCardData';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { BookOpenCheck, Download, Eye, FileQuestion, Loader2, Users } from 'lucide-react';
+import { BookOpenCheck, Download, Eye, FileQuestion, Loader2, Users, Archive } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+import JSZip from 'jszip';
 
 type StudentGradeDetail = {
   id: string;
@@ -37,6 +38,10 @@ export default function AdminGrades() {
   const [detailGrades, setDetailGrades] = useState<StudentGradeDetail[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [downloadingStudentId, setDownloadingStudentId] = useState<string | null>(null);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [isBulkDownloading, setIsBulkDownloading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+  const [bulkErrors, setBulkErrors] = useState<string[]>([]);
 
   const { data: classes = [] } = useClasses();
   const { data: sessions = [] } = useAcademicSessions();
@@ -94,6 +99,200 @@ export default function AdminGrades() {
       grade_letter: row.grade_letter,
       remark: row.remark,
     })) as StudentGradeDetail[];
+  };
+
+  const sanitizeFilename = (name: string): string => {
+    return name
+      .trim()
+      .replace(/[<>:"/\\|?*]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/\//g, '-')
+      .replace(/\\/g, '-')
+      .substring(0, 100);
+  };
+
+  const handleBulkDownload = async () => {
+    if (!overview?.students || overview.students.length === 0) {
+      toast.error('No students to generate report cards for.');
+      return;
+    }
+
+    setBulkConfirmOpen(false);
+    setIsBulkDownloading(true);
+    setBulkErrors([]);
+    setBulkProgress({ current: 0, total: 0 });
+
+    try {
+      const eligibleStudents = overview.students.filter(
+        (student) => student.completed_subjects > 0
+      );
+
+      if (eligibleStudents.length === 0) {
+        toast.error('No students with grades to generate report cards for.');
+        setIsBulkDownloading(false);
+        return;
+      }
+
+      const studentIds = eligibleStudents.map((s) => s.id);
+      setBulkProgress({ current: 0, total: eligibleStudents.length });
+
+      // Batch fetch current-term grades for all eligible students
+      const { data: currentTermGrades, error: currentTermError } = await supabase
+        .from('grades')
+        .select(`
+          id,
+          student_id,
+          test_1,
+          test_2,
+          project_1,
+          assignment_1,
+          exam,
+          total,
+          grade_letter,
+          remark,
+          class_subjects(subjects(name))
+        `)
+        .eq('term', selectedTerm)
+        .eq('session', selectedSession)
+        .in('student_id', studentIds);
+
+      if (currentTermError) throw currentTermError;
+
+      // Batch fetch all-term grades for cumulative average (same session only)
+      const { data: allTermGrades, error: allTermError } = await supabase
+        .from('grades')
+        .select('id, student_id, term, session, total')
+        .eq('session', selectedSession)
+        .in('student_id', studentIds);
+
+      if (allTermError) throw allTermError;
+
+      // Group grades by student_id
+      const currentTermGradesByStudent = new Map<string, StudentGradeDetail[]>();
+      for (const grade of currentTermGrades ?? []) {
+        const studentId = (grade as any).student_id;
+        if (!currentTermGradesByStudent.has(studentId)) {
+          currentTermGradesByStudent.set(studentId, []);
+        }
+        currentTermGradesByStudent.get(studentId)!.push({
+          id: grade.id,
+          subject: (grade as any).class_subjects?.subjects?.name || 'Unknown Subject',
+          test_1: grade.test_1,
+          test_2: grade.test_2,
+          project_1: grade.project_1,
+          assignment_1: grade.assignment_1,
+          exam: grade.exam,
+          total: grade.total,
+          grade_letter: grade.grade_letter,
+          remark: grade.remark,
+        });
+      }
+
+      const allTermGradesByStudent = new Map<string, Array<{ term: string; session: string | null; total: number | null }>>();
+      for (const grade of allTermGrades ?? []) {
+        const studentId = (grade as any).student_id;
+        if (!allTermGradesByStudent.has(studentId)) {
+          allTermGradesByStudent.set(studentId, []);
+        }
+        allTermGradesByStudent.get(studentId)!.push({
+          term: grade.term,
+          session: grade.session,
+          total: grade.total,
+        });
+      }
+
+      // Initialize ZIP
+      const zip = new JSZip();
+      const usedFilenames = new Set<string>();
+
+      // Generate PDFs sequentially
+      for (let i = 0; i < eligibleStudents.length; i++) {
+        const student = eligibleStudents[i];
+        setBulkProgress({ current: i + 1, total: eligibleStudents.length });
+
+        try {
+          const grades = currentTermGradesByStudent.get(student.id) || [];
+          if (grades.length === 0) {
+            setBulkErrors((prev) => [...prev, `${student.full_name}: No grades found`]);
+            continue;
+          }
+
+          // Calculate cumulative average
+          const studentAllTermGrades = allTermGradesByStudent.get(student.id) || [];
+          const grouped = groupGradesByTerm(studentAllTermGrades, selectedSession);
+          const cumulativeAverage = calculateCumulativeAverage(grouped, selectedTerm);
+
+          // Generate PDF
+          const doc = await buildReportCardDoc(
+            {
+              full_name: student.full_name,
+              admission_number: student.admission_number || '',
+              class_name: student.class_name || selectedClassData?.name || '',
+              tier: student.tier || selectedClassData?.tier || '',
+              class_teacher_name: selectedClassData?.class_teacher?.full_name,
+            },
+            selectedTerm,
+            selectedSession,
+            grades,
+            cumulativeAverage
+          );
+
+          // Convert to blob
+          const pdfBlob = doc.output('blob');
+
+          // Generate safe filename
+          let filename = sanitizeFilename(student.full_name);
+          if (usedFilenames.has(filename)) {
+            // Use admission number as fallback for uniqueness
+            const admissionSuffix = student.admission_number
+              ? `_${sanitizeFilename(student.admission_number)}`
+              : `_${student.id.substring(0, 8)}`;
+            filename = `${sanitizeFilename(student.full_name)}${admissionSuffix}`;
+          }
+          usedFilenames.add(filename);
+          filename = `${filename}.pdf`;
+
+          // Add to ZIP
+          zip.file(filename, pdfBlob);
+        } catch (err: any) {
+          setBulkErrors((prev) => [...prev, `${student.full_name}: ${err?.message || 'Unknown error'}`]);
+        }
+      }
+
+      // Generate ZIP
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+      // Download ZIP
+      const safeClassName = sanitizeFilename(selectedClassData?.name || 'Class');
+      const safeTerm = sanitizeFilename(selectedTerm);
+      const safeSession = sanitizeFilename(selectedSession || 'Session');
+      const zipFilename = `${safeClassName}_${safeTerm}_${safeSession}_Report-Cards.zip`;
+
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = zipFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Show result
+      const successCount = eligibleStudents.length - bulkErrors.length;
+      if (bulkErrors.length === 0) {
+        toast.success(`${successCount} report cards downloaded successfully.`);
+      } else {
+        toast.error(
+          `${successCount} of ${eligibleStudents.length} report cards generated successfully.\nFailed: ${bulkErrors.join(', ')}`,
+          { duration: 10000 }
+        );
+      }
+    } catch (err: any) {
+      toast.error(`Failed to generate report cards: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setIsBulkDownloading(false);
+      setBulkProgress({ current: 0, total: 0 });
+    }
   };
 
   const openStudentResult = async (student: any) => {
@@ -231,11 +430,30 @@ export default function AdminGrades() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <Card><CardContent className="pt-6"><div className="flex items-center gap-3"><Users className="h-5 w-5 text-primary" /><div><p className="text-xs text-muted-foreground">Students</p><p className="text-2xl font-bold">{summary.students}</p></div></div></CardContent></Card>
-                <Card><CardContent className="pt-6"><div><p className="text-xs text-muted-foreground">Subjects</p><p className="text-2xl font-bold">{summary.subjects}</p></div></CardContent></Card>
-                <Card><CardContent className="pt-6"><div><p className="text-xs text-muted-foreground">Complete</p><p className="text-2xl font-bold text-emerald-700">{summary.complete}</p></div></CardContent></Card>
-                <Card><CardContent className="pt-6"><div><p className="text-xs text-muted-foreground">Incomplete</p><p className="text-2xl font-bold text-amber-700">{summary.incomplete}</p></div></CardContent></Card>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 flex-1">
+                  <Card><CardContent className="pt-6"><div className="flex items-center gap-3"><Users className="h-5 w-5 text-primary" /><div><p className="text-xs text-muted-foreground">Students</p><p className="text-2xl font-bold">{summary.students}</p></div></div></CardContent></Card>
+                  <Card><CardContent className="pt-6"><div><p className="text-xs text-muted-foreground">Subjects</p><p className="text-2xl font-bold">{summary.subjects}</p></div></CardContent></Card>
+                  <Card><CardContent className="pt-6"><div><p className="text-xs text-muted-foreground">Complete</p><p className="text-2xl font-bold text-emerald-700">{summary.complete}</p></div></CardContent></Card>
+                  <Card><CardContent className="pt-6"><div><p className="text-xs text-muted-foreground">Incomplete</p><p className="text-2xl font-bold text-amber-700">{summary.incomplete}</p></div></CardContent></Card>
+                </div>
+                <Button
+                  onClick={() => setBulkConfirmOpen(true)}
+                  disabled={isBulkDownloading || summary.students === 0 || overview?.students?.every((s) => s.completed_subjects === 0)}
+                  className="lg:self-center"
+                >
+                  {isBulkDownloading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating {bulkProgress.current} of {bulkProgress.total}...
+                    </>
+                  ) : (
+                    <>
+                      <Archive className="mr-2 h-4 w-4" />
+                      Download All PDFs
+                    </>
+                  )}
+                </Button>
               </div>
 
               <Card className="overflow-hidden border-border shadow-sm">
@@ -323,6 +541,44 @@ export default function AdminGrades() {
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Generate Report Cards</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <p className="text-sm text-muted-foreground">
+                Generate report cards for <span className="font-semibold text-foreground">{selectedClassData?.name}</span> — {selectedTerm}, {selectedSession}?
+              </p>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Complete:</span>
+                  <span className="font-semibold text-emerald-700">{summary.complete}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Incomplete:</span>
+                  <span className="font-semibold text-amber-700">{summary.incomplete}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">With no grades (will be skipped):</span>
+                  <span className="font-semibold">{overview?.no_grades_count ?? 0}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2">
+                  <span className="font-semibold">Total PDFs to generate:</span>
+                  <span className="font-bold text-primary">{summary.complete + summary.incomplete}</span>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBulkConfirmOpen(false)}>Cancel</Button>
+              <Button onClick={handleBulkDownload}>
+                <Archive className="mr-2 h-4 w-4" />
+                Generate {summary.complete + summary.incomplete} Report Cards
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </DashboardLayout>

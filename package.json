@@ -73,6 +73,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.110.2",
     "jspdf": "^4.2.1",
-    "jspdf-autotable": "^5.0.8"
+    "jspdf-autotable": "^5.0.8",
+    "jszip": "^3.10.2"
   }
 }

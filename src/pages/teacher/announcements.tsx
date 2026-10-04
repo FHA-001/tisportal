@@ -10,12 +10,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useTeacherAnnouncements, useCreateAnnouncement, useUpdateAnnouncement, useDeleteAnnouncement } from '@/hooks/use-announcements';
 import { usePortalIdentity } from '@/hooks/use-portal-identity';
-import { Megaphone, Plus, Pencil, Trash2, Loader2, AlertTriangle, Calendar, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { Megaphone, Plus, Pencil, Trash2, Loader2, AlertTriangle, Calendar, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function TeacherAnnouncements() {
   const { data: portalIdentity } = usePortalIdentity();
-  const { data: announcements = [], isLoading } = useTeacherAnnouncements(portalIdentity?.profile_id);
+  const { data: announcements = [], isLoading } = useTeacherAnnouncements();
   const createAnnouncement = useCreateAnnouncement();
   const updateAnnouncement = useUpdateAnnouncement();
   const deleteAnnouncement = useDeleteAnnouncement();
@@ -320,7 +320,7 @@ export default function TeacherAnnouncements() {
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          {announcement.published_by === session?.id && (
+                          {announcement.published_by === portalIdentity?.profile_id && (
                             <>
                               <Button
                                 size="sm"

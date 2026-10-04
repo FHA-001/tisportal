@@ -3,17 +3,19 @@ import { DashboardLayout } from '@/components/shared/dashboard-layout';
 import { ProtectedRoute } from '@/components/shared/protected-route';
 import { PageHeader } from '@/components/shared/page-header';
 import { useClasses, useCreateClass, useUpdateClass, useDeleteClass } from '@/hooks/use-academics';
+import { useTeachers } from '@/hooks/use-users';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Edit2, Trash2, Loader2, Users } from 'lucide-react';
+import { Plus, Edit2, Trash2, Loader2, Users, UserCheck } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 export default function AdminClasses() {
   const { data: classes = [], isLoading } = useClasses();
+  const { data: teachers = [] } = useTeachers('admin');
   
   const createClass = useCreateClass();
   const updateClass = useUpdateClass();
@@ -27,7 +29,8 @@ export default function AdminClasses() {
     tier: '',
     level: 1,
     section: '',
-    admission_prefix: ''
+    admission_prefix: '',
+    class_teacher_id: ''
   });
 
   const handleOpenDialog = (classItem?: any) => {
@@ -38,12 +41,13 @@ export default function AdminClasses() {
         tier: classItem.tier,
         level: classItem.level || 1,
         section: classItem.section || '',
-        admission_prefix: classItem.admission_prefix || ''
+        admission_prefix: classItem.admission_prefix || '',
+        class_teacher_id: classItem.class_teacher_id || ''
       });
     } else {
       setEditingId(null);
       setFormData({
-        name: '', tier: '', level: 1, section: '', admission_prefix: ''
+        name: '', tier: '', level: 1, section: '', admission_prefix: '', class_teacher_id: ''
       });
     }
     setIsDialogOpen(true);
@@ -56,6 +60,10 @@ export default function AdminClasses() {
     if (!payload.admission_prefix && payload.tier) {
       const map: Record<string, string> = { 'Primary': 'PRI', 'Junior Secondary': 'JSS', 'Senior Secondary': 'SSS' };
       payload.admission_prefix = map[payload.tier] || 'STU';
+    }
+    // Convert empty string to null for class_teacher_id
+    if (payload.class_teacher_id === '') {
+      payload.class_teacher_id = null;
     }
 
     if (editingId) {
@@ -94,6 +102,7 @@ export default function AdminClasses() {
                     <TableHead>Tier</TableHead>
                     <TableHead>Section</TableHead>
                     <TableHead>Level</TableHead>
+                    <TableHead>Class Teacher</TableHead>
                     <TableHead>Students</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -101,7 +110,7 @@ export default function AdminClasses() {
                 <TableBody>
                   {classes.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                         No classes found.
                       </TableCell>
                     </TableRow>
@@ -113,6 +122,16 @@ export default function AdminClasses() {
                         <TableCell>{c.tier}</TableCell>
                         <TableCell>{c.section || '-'}</TableCell>
                         <TableCell>{c.level}</TableCell>
+                        <TableCell>
+                          {c.class_teacher ? (
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <UserCheck className="w-4 h-4" />
+                              <span>{c.class_teacher.full_name}</span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground italic">Not assigned</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 text-muted-foreground">
                             <Users className="w-4 h-4" />
@@ -189,6 +208,21 @@ export default function AdminClasses() {
                   <Label htmlFor="section">Section</Label>
                   <Input id="section" value={formData.section} onChange={e => setFormData({...formData, section: e.target.value})} placeholder="e.g. A, B, Science" />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="class_teacher_id">Class Teacher</Label>
+                <Select value={formData.class_teacher_id} onValueChange={v => setFormData({...formData, class_teacher_id: v})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Class Teacher (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {teachers.filter(t => t.is_active !== false).map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 mt-6 border-t border-border">

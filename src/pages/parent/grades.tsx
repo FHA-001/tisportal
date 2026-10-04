@@ -7,19 +7,24 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useParentChildren } from '@/hooks/use-parents';
 import { useParentChildGrades } from '@/hooks/use-records';
+import { useAcademicSessions } from '@/hooks/use-academics';
 import { generateReportCardPdf, buildReportCardDoc } from '@/lib/reportCardPdf';
+import { calculateCumulativeAverage, groupGradesByTerm } from '@/lib/reportCardData';
 import { Award, Loader2, ChevronDown, User, Download, Printer } from 'lucide-react';
 import { getGradeLetter, getGradeRemark } from '@/lib/auth-utils';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function ParentGrades() {
   const { data: children = [], isLoading: childrenLoading } = useParentChildren();
+  const { data: sessions = [] } = useAcademicSessions();
+  const activeSession = sessions.find(s => s.is_active);
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [selectedTerm, setSelectedTerm] = useState<string>('First Term');
   const [showChildDropdown, setShowChildDropdown] = useState(false);
 
   const selectedChild = children.find((c: any) => c.students?.id === selectedChildId);
-  
+
   // Set first child as default when children load
   if (children.length > 0 && !selectedChildId && children[0].students) {
     setSelectedChildId(children[0].students.id);
@@ -27,12 +32,18 @@ export default function ParentGrades() {
 
   const { data: grades = [], isLoading: gradesLoading } = useParentChildGrades(
     selectedChildId,
-    { term: selectedTerm }
+    { term: selectedTerm, session: activeSession?.name }
   );
 
   const handleDownloadPdf = async () => {
     if (!selectedChild || !selectedChild.students || grades.length === 0) {
       toast.error('No grades available to download for this child.');
+      return;
+    }
+
+    const sessionName = activeSession?.name;
+    if (!sessionName) {
+      toast.error('No active academic session configured. Please contact administration.');
       return;
     }
 
@@ -51,17 +62,34 @@ export default function ParentGrades() {
         remark: g.remark,
       }));
 
-      // Find class name from the first grade record
+      // Find class name and class teacher from the first grade record
       const className = grades[0]?.class_subjects?.classes?.name || selectedChild.students.classes?.name || 'Unknown Class';
+      const classTeacherName = grades[0]?.class_teacher_name || undefined;
+
+      // Fetch all-term grades for cumulative average calculation
+      let cumulativeAverage: number | null = null;
+      if (sessionName) {
+        const { data: allTermGrades } = await supabase
+          .from('grades')
+          .select('term, session, total')
+          .eq('student_id', selectedChild.students.id)
+          .eq('session', sessionName);
+
+        if (allTermGrades && allTermGrades.length > 0) {
+          const grouped = groupGradesByTerm(allTermGrades, sessionName);
+          cumulativeAverage = calculateCumulativeAverage(grouped, selectedTerm);
+        }
+      }
 
       const studentInfo = {
         full_name: selectedChild.students.full_name,
         admission_number: selectedChild.students.admission_number,
         class_name: className,
         tier: selectedChild.students.tier,
+        class_teacher_name: classTeacherName,
       };
 
-      await generateReportCardPdf(studentInfo, selectedTerm || 'First Term', 'Current Session', pdfGrades);
+      await generateReportCardPdf(studentInfo, selectedTerm || 'First Term', sessionName, pdfGrades, cumulativeAverage);
       toast.success('Report card downloaded.', { id: 'pdf-gen' });
     } catch (err) {
       toast.error('Failed to generate report card.', { id: 'pdf-gen' });
@@ -71,6 +99,12 @@ export default function ParentGrades() {
   const handlePrint = async () => {
     if (!selectedChild || !selectedChild.students || grades.length === 0) {
       toast.error('No grades available to print for this child.');
+      return;
+    }
+
+    const sessionName = activeSession?.name;
+    if (!sessionName) {
+      toast.error('No active academic session configured. Please contact administration.');
       return;
     }
 
@@ -89,17 +123,34 @@ export default function ParentGrades() {
         remark: g.remark,
       }));
 
-      // Find class name from the first grade record
+      // Find class name and class teacher from the first grade record
       const className = grades[0]?.class_subjects?.classes?.name || selectedChild.students.classes?.name || 'Unknown Class';
+      const classTeacherName = grades[0]?.class_teacher_name || undefined;
+
+      // Fetch all-term grades for cumulative average calculation
+      let cumulativeAverage: number | null = null;
+      if (sessionName) {
+        const { data: allTermGrades } = await supabase
+          .from('grades')
+          .select('term, session, total')
+          .eq('student_id', selectedChild.students.id)
+          .eq('session', sessionName);
+
+        if (allTermGrades && allTermGrades.length > 0) {
+          const grouped = groupGradesByTerm(allTermGrades, sessionName);
+          cumulativeAverage = calculateCumulativeAverage(grouped, selectedTerm);
+        }
+      }
 
       const studentInfo = {
         full_name: selectedChild.students.full_name,
         admission_number: selectedChild.students.admission_number,
         class_name: className,
         tier: selectedChild.students.tier,
+        class_teacher_name: classTeacherName,
       };
 
-      const doc = await buildReportCardDoc(studentInfo, selectedTerm || 'First Term', 'Current Session', pdfGrades);
+      const doc = await buildReportCardDoc(studentInfo, selectedTerm || 'First Term', sessionName, pdfGrades, cumulativeAverage);
       doc.autoPrint();
       window.open(doc.output('bloburl'), '_blank');
       toast.success('Report card opened for printing.', { id: 'pdf-print' });

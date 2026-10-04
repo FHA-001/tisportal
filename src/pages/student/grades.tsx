@@ -10,9 +10,11 @@ import { useStudentGrades } from '@/hooks/use-records';
 import { useAcademicSessions } from '@/hooks/use-academics';
 import { getCustomSession } from '@/lib/auth-utils';
 import { generateReportCardPdf, buildReportCardDoc } from '@/lib/reportCardPdf';
+import { calculateCumulativeAverage, groupGradesByTerm } from '@/lib/reportCardData';
 import { Download, Loader2, Award, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { SCHOOL_CONFIG } from '@/lib/app-config';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function StudentGrades() {
   const session = getCustomSession() as any;
@@ -60,17 +62,34 @@ export default function StudentGrades() {
         remark: g.remark,
       }));
 
-      // Find class name from the first grade record
+      // Find class name and class teacher from the first grade record
       const className = grades[0]?.class_subjects?.classes?.name || 'Unknown Class';
+      const classTeacherName = grades[0]?.class_teacher_name || undefined;
+
+      // Fetch all-term grades for cumulative average calculation
+      let cumulativeAverage: number | null = null;
+      if (activeSession?.name) {
+        const { data: allTermGrades } = await supabase
+          .from('grades')
+          .select('term, session, total')
+          .eq('student_id', session.id)
+          .eq('session', activeSession.name);
+
+        if (allTermGrades && allTermGrades.length > 0) {
+          const grouped = groupGradesByTerm(allTermGrades, activeSession.name);
+          cumulativeAverage = calculateCumulativeAverage(grouped, selectedTerm);
+        }
+      }
 
       const studentInfo = {
         full_name: session.full_name,
         admission_number: session.admission_number,
         class_name: className,
         tier: session.tier,
+        class_teacher_name: classTeacherName,
       };
 
-      await generateReportCardPdf(studentInfo, selectedTerm, activeSession?.name, pdfGrades);
+      await generateReportCardPdf(studentInfo, selectedTerm, activeSession?.name, pdfGrades, cumulativeAverage);
       toast.success('Report card downloaded.', { id: 'pdf-gen' });
     } catch (err) {
       toast.error('Failed to generate report card.', { id: 'pdf-gen' });
@@ -93,17 +112,34 @@ export default function StudentGrades() {
         remark: g.remark,
       }));
 
-      // Find class name from the first grade record
+      // Find class name and class teacher from the first grade record
       const className = grades[0]?.class_subjects?.classes?.name || 'Unknown Class';
+      const classTeacherName = grades[0]?.class_teacher_name || undefined;
+
+      // Fetch all-term grades for cumulative average calculation
+      let cumulativeAverage: number | null = null;
+      if (activeSession?.name) {
+        const { data: allTermGrades } = await supabase
+          .from('grades')
+          .select('term, session, total')
+          .eq('student_id', session.id)
+          .eq('session', activeSession.name);
+
+        if (allTermGrades && allTermGrades.length > 0) {
+          const grouped = groupGradesByTerm(allTermGrades, activeSession.name);
+          cumulativeAverage = calculateCumulativeAverage(grouped, selectedTerm);
+        }
+      }
 
       const studentInfo = {
         full_name: session.full_name,
         admission_number: session.admission_number,
         class_name: className,
         tier: session.tier,
+        class_teacher_name: classTeacherName,
       };
 
-      const doc = await buildReportCardDoc(studentInfo, selectedTerm, activeSession?.name, pdfGrades);
+      const doc = await buildReportCardDoc(studentInfo, selectedTerm, activeSession?.name, pdfGrades, cumulativeAverage);
       doc.autoPrint();
       window.open(doc.output('bloburl'), '_blank');
       toast.success('Report card opened for printing.', { id: 'pdf-print' });

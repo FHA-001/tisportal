@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { useClasses, useAcademicSessions } from '@/hooks/use-academics';
 import { useAdminClassResults } from '@/hooks/use-records';
 import { generateReportCardPdf } from '@/lib/reportCardPdf';
+import { calculateCumulativeAverage, groupGradesByTerm } from '@/lib/reportCardData';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -120,16 +121,32 @@ export default function AdminGrades() {
         return;
       }
 
+      // Fetch all-term grades for cumulative average calculation
+      const { data: allTermGrades } = await supabase
+        .from('grades')
+        .select('term, session, total')
+        .eq('student_id', student.id)
+        .eq('session', selectedSession);
+
+      // Calculate cumulative average
+      let cumulativeAverage: number | null = null;
+      if (allTermGrades && allTermGrades.length > 0 && selectedSession) {
+        const grouped = groupGradesByTerm(allTermGrades, selectedSession);
+        cumulativeAverage = calculateCumulativeAverage(grouped, selectedTerm);
+      }
+
       await generateReportCardPdf(
         {
           full_name: student.full_name,
           admission_number: student.admission_number || '',
           class_name: student.class_name || selectedClassData?.name || '',
           tier: student.tier || selectedClassData?.tier || '',
+          class_teacher_name: selectedClassData?.class_teacher?.full_name,
         },
         selectedTerm,
         selectedSession,
-        grades
+        grades,
+        cumulativeAverage
       );
 
       toast.success('Report card downloaded successfully.', { id: 'pdf-gen' });

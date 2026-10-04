@@ -1,76 +1,104 @@
-import { supabase } from './supabaseClient';
+// Report Card Data Utilities
+// Provides cumulative average calculation and term-averaging utilities
 
-// ---------------------------------------------------------------------------
-// Class-wide ranking helpers for the report card PDF: overall class position
-// (sum of totals across all subjects) and per-subject position, computed
-// client-side from the class's grades for a given term/session.
-// ---------------------------------------------------------------------------
-
-export type RankInfo = { position: number; outOf: number };
-
-export type ClassRankings = {
-  overall: Map<string, RankInfo>;
-  bySubject: Map<string, Map<string, RankInfo>>;
+export type TermGrades = {
+  term: string;
+  grades: Array<{ total: number | null }>;
 };
 
-function rankMap(totals: Map<string, number>): Map<string, RankInfo> {
-  const sorted = Array.from(totals.entries()).sort((a, b) => b[1] - a[1]);
-  const result = new Map<string, RankInfo>();
-  let lastScore: number | null = null;
-  let lastRank = 0;
-  sorted.forEach(([studentId, score], idx) => {
-    if (score !== lastScore) {
-      lastRank = idx + 1;
-      lastScore = score;
+/**
+ * Calculate term average from grades
+ * Uses the same formula as the existing report-card system:
+ * sum(subject totals) / number of graded subjects
+ */
+export function calculateTermAverage(grades: Array<{ total: number | null }>): number | null {
+  const validGrades = grades.filter(g => g.total !== null);
+  if (validGrades.length === 0) return null;
+
+  const totalScored = validGrades.reduce((sum, g) => sum + (g.total || 0), 0);
+  return totalScored / validGrades.length;
+}
+
+/**
+ * Calculate cumulative average across multiple terms
+ * STRICT RULE: Only include available term averages up to and including currentTerm
+ * Missing terms are EXCLUDED (never treated as zero)
+ *
+ * Rules:
+ * - Calculate term averages for First, Second, Third
+ * - Only terms up to and including currentTerm are eligible
+ * - Collect only non-null term averages from eligible terms
+ * - Average the available term averages
+ * - If no eligible term averages exist, return null
+ *
+ * Examples:
+ * - First Term, First=80 => 80
+ * - Second Term, First=80, Second=70 => 75
+ * - Second Term, First missing, Second=70 => 70
+ * - Third Term, First=80, Second missing, Third=90 => 85
+ * - Third Term, First=80, Second=70, Third=90 => 80
+ * - Third Term, First missing, Second missing, Third=90 => 90
+ * - No grades => null
+ */
+export function calculateCumulativeAverage(gradesByTerm: Map<string, Array<{ total: number | null }>>, currentTerm: string): number | null {
+  const firstTermGrades = gradesByTerm.get('First Term') || [];
+  const secondTermGrades = gradesByTerm.get('Second Term') || [];
+  const thirdTermGrades = gradesByTerm.get('Third Term') || [];
+
+  const firstTermAvg = calculateTermAverage(firstTermGrades);
+  const secondTermAvg = calculateTermAverage(secondTermGrades);
+  const thirdTermAvg = calculateTermAverage(thirdTermGrades);
+
+  // Determine eligible term averages based on currentTerm
+  const eligibleAverages: number[] = [];
+
+  if (currentTerm === 'First Term') {
+    // Only First Term is eligible
+    if (firstTermAvg !== null) eligibleAverages.push(firstTermAvg);
+  } else if (currentTerm === 'Second Term') {
+    // First and Second Terms are eligible
+    if (firstTermAvg !== null) eligibleAverages.push(firstTermAvg);
+    if (secondTermAvg !== null) eligibleAverages.push(secondTermAvg);
+  } else if (currentTerm === 'Third Term') {
+    // First, Second, and Third Terms are eligible
+    if (firstTermAvg !== null) eligibleAverages.push(firstTermAvg);
+    if (secondTermAvg !== null) eligibleAverages.push(secondTermAvg);
+    if (thirdTermAvg !== null) eligibleAverages.push(thirdTermAvg);
+  } else {
+    // Unknown term
+    return null;
+  }
+
+  // If no eligible term averages exist, return null
+  if (eligibleAverages.length === 0) {
+    return null;
+  }
+
+  // Average the available term averages
+  const sum = eligibleAverages.reduce((acc, avg) => acc + avg, 0);
+  return sum / eligibleAverages.length;
+}
+
+/**
+ * Group grades by term for cumulative calculation
+ * Filters by academic session to prevent cross-session mixing
+ */
+export function groupGradesByTerm(
+  grades: Array<{ term: string; session: string | null; total: number | null }>,
+  session: string
+): Map<string, Array<{ total: number | null }>> {
+  const grouped = new Map<string, Array<{ total: number | null }>>();
+
+  grades.forEach(grade => {
+    // Only include grades from the specified session
+    if (grade.session !== session) return;
+
+    const term = grade.term;
+    if (!grouped.has(term)) {
+      grouped.set(term, []);
     }
-    result.set(studentId, { position: lastRank, outOf: sorted.length });
+    grouped.get(term)!.push({ total: grade.total });
   });
-  return result;
-}
 
-export async function computeClassRankings(
-  classId: string,
-  term: string,
-  session: string,
-): Promise<ClassRankings> {
-  const { data, error } = await supabase
-    .from('grades')
-    .select('student_id, class_subject_id, total, class_subjects!inner(class_id)')
-    .eq('term', term)
-    .eq('session', session)
-    .eq('class_subjects.class_id', classId);
-
-  if (error) throw error;
-
-  const overallTotals = new Map<string, number>();
-  const subjectTotals = new Map<string, Map<string, number>>();
-
-  for (const row of data || []) {
-    const total = (row as any).total ?? 0;
-    const studentId = (row as any).student_id as string;
-    const classSubjectId = (row as any).class_subject_id as string;
-
-    overallTotals.set(studentId, (overallTotals.get(studentId) || 0) + total);
-
-    if (!subjectTotals.has(classSubjectId)) subjectTotals.set(classSubjectId, new Map());
-    subjectTotals.get(classSubjectId)!.set(studentId, total);
-  }
-
-  const bySubject = new Map<string, Map<string, RankInfo>>();
-  for (const [classSubjectId, totals] of subjectTotals.entries()) {
-    bySubject.set(classSubjectId, rankMap(totals));
-  }
-
-  return { overall: rankMap(overallTotals), bySubject };
-}
-
-export function ordinal(n: number): string {
-  const rem100 = n % 100;
-  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
-  switch (n % 10) {
-    case 1: return `${n}st`;
-    case 2: return `${n}nd`;
-    case 3: return `${n}rd`;
-    default: return `${n}th`;
-  }
+  return grouped;
 }

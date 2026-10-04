@@ -10,7 +10,7 @@ export const useClasses = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('classes')
-        .select('*, students(count)')
+        .select('*, students(count), class_teacher:teachers!classes_class_teacher_id_fkey(id, full_name, is_active)')
         .order('name', { ascending: true });
 
       if (error) throw error;

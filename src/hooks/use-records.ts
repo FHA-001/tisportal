@@ -221,7 +221,8 @@ export const useStudentGrades = (filters?: { term?: string; session?: string }) 
             name: row.class_subject_class_name,
             tier: row.class_subject_class_tier
           } : null
-        }
+        },
+        class_teacher_name: row.class_teacher_name
       }));
     },
     enabled: !!session?.session_token && session?.role === 'student'
@@ -267,7 +268,8 @@ export const useParentChildGrades = (studentId?: string, filters?: { term?: stri
             name: row.class_subject_class_name,
             tier: row.class_subject_class_tier
           } : null
-        }
+        },
+        class_teacher_name: row.class_teacher_name
       }));
     },
     enabled: !!studentId

@@ -66,6 +66,9 @@ import StudentAnnouncements from '@/pages/student/announcements';
 import StudentHomework from '@/pages/student/homework';
 import StudentNewsletters from '@/pages/student/newsletters';
 
+// Dev-only routes
+import ReportPreview from '@/pages/dev/report-preview';
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -137,6 +140,9 @@ function Router() {
       <Route path="/parent/payment-history" component={ParentPaymentHistory} />
       <Route path="/parent/announcements" component={ParentAnnouncements} />
       <Route path="/parent/newsletters" component={ParentNewsletters} />
+
+      {/* Dev-only Routes */}
+      {import.meta.env.DEV && <Route path="/dev/report-preview" component={ReportPreview} />}
 
       <Route component={NotFound} />
     </Switch>

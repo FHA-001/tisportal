@@ -37,6 +37,8 @@ import { ThemeToggle } from '@/components/shared/theme-toggle';
 import { getCustomSession, clearCustomSession, setCustomSession, changePassword, validatePasswordStrength } from '@/lib/auth-utils';
 
 import { changePortalAuthPassword } from '@/lib/portal-auth';
+import { usePortalIdentity } from '@/hooks/use-portal-identity';
+import { supabase } from '@/lib/supabaseClient';
 
 
 
@@ -57,6 +59,8 @@ export default function ChangePassword() {
 
 
   const session = getCustomSession();
+
+  const { data: portalIdentity } = usePortalIdentity();
 
 
 
@@ -101,62 +105,33 @@ export default function ChangePassword() {
 
 
   // Redirect if not logged in
+  // For Student: require custom session
+  // For Teacher/Accountant/Parent: require portal identity (Supabase Auth)
+  const isStudent = session?.role === 'student';
+  const isMigratedRole = portalIdentity?.role && ['teacher', 'accountant', 'parent'].includes(portalIdentity.role);
 
-
-
-  if (!session) {
-
-
-
+  if (!session && !portalIdentity) {
     setLocation('/login');
-
-
-
     return null;
-
-
-
   }
 
-
-
-
-
-
-
-  // Check for session token
-
-
-
-  if (!session.session_token) {
-
-
-
+  // Student requires session_token
+  if (isStudent && !session.session_token) {
     toast.error('Session expired or invalid. Please log in again.');
-
-
-
     clearCustomSession();
-
-
-
     setLocation('/login');
-
-
-
     return null;
-
-
-
   }
 
+  // Migrated roles require valid portal identity
+  if (isMigratedRole && !portalIdentity.authenticated) {
+    toast.error('Session expired or invalid. Please log in again.');
+    supabase.auth.signOut();
+    setLocation('/login');
+    return null;
+  }
 
-
-
-
-
-
-  const sessionToken = session.session_token;
+  const sessionToken = isStudent ? session.session_token : null;
 
 
 
@@ -318,7 +293,7 @@ export default function ChangePassword() {
 
     const result =
 
-      session.role === 'student'
+      isStudent
 
         ? await changePassword(sessionToken, currentPassword, newPassword)
 
@@ -389,18 +364,14 @@ export default function ChangePassword() {
 
 
 
-
       // Update session to clear must_change_password flag
-
-
-
-      const updatedSession = { ...session, must_change_password: false };
-
-
-
-      setCustomSession(updatedSession);
-
-
+      // Student: update custom session
+      // Teacher/Accountant/Parent: flag is cleared in database by complete_portal_password_change,
+      // and will be reflected on next getPortalIdentity() call
+      if (isStudent) {
+        const updatedSession = { ...session, must_change_password: false };
+        setCustomSession(updatedSession);
+      }
 
 
 
@@ -410,7 +381,7 @@ export default function ChangePassword() {
 
 
 
-      switch (session.role) {
+      switch (isStudent ? 'student' : portalIdentity.role) {
 
 
 
@@ -502,7 +473,7 @@ export default function ChangePassword() {
 
 
 
-    switch (session.role) {
+    switch (isStudent ? 'student' : portalIdentity.role) {
 
 
 
@@ -631,16 +602,16 @@ export default function ChangePassword() {
 
 
 
-              {session.role === 'teacher' && 'Teacher Account'}
-              {session.role === 'accountant' && 'Accountant Account'}
+              {isStudent ? 'Student Account' : portalIdentity.role === 'teacher' && 'Teacher Account'}
+              {isStudent ? '' : portalIdentity.role === 'accountant' && 'Accountant Account'}
 
 
 
-              {session.role === 'student' && 'Student Account'}
+              {isStudent ? 'Student Account' : ''}
 
 
 
-              {session.role === 'parent' && 'Parent Account'}
+              {isStudent ? '' : portalIdentity.role === 'parent' && 'Parent Account'}
 
 
 

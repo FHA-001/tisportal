@@ -16,33 +16,16 @@ export default function Home() {
     };
 
     const checkAuthAndRedirect = async () => {
-      // Preserve any currently valid custom session first. This keeps Student
-      // authentication unchanged and also avoids disrupting a session that was
-      // already open while the migration was deployed.
+      // Student: preserve custom session (no Supabase Auth)
       const customSession = getCustomSession();
 
-      if (customSession) {
-        if (customSession.role === 'student') {
-          go('/student');
-          return;
-        }
-
-        if (customSession.role === 'teacher') {
-          go('/teacher');
-          return;
-        }
-
-        if (customSession.role === 'accountant') {
-          go('/accountant');
-          return;
-        }
-
-        if (customSession.role === 'parent') {
-          go('/parent');
-          return;
-        }
+      if (customSession && customSession.role === 'student') {
+        go('/student');
+        return;
       }
 
+      // Migrated roles (admin/teacher/accountant/parent): use Supabase Auth + getPortalIdentity
+      // Ignore any legacy custom sessions for these roles
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -60,16 +43,31 @@ export default function Home() {
       }
 
       if (restored.role === 'teacher') {
+        // Check must_change_password flag
+        if (restored.must_change_password) {
+          go('/change-password');
+          return;
+        }
         go('/teacher');
         return;
       }
 
       if (restored.role === 'accountant') {
+        // Check must_change_password flag
+        if (restored.must_change_password) {
+          go('/change-password');
+          return;
+        }
         go('/accountant');
         return;
       }
 
       if (restored.role === 'parent') {
+        // Check must_change_password flag
+        if (restored.must_change_password) {
+          go('/change-password');
+          return;
+        }
         go('/parent');
         return;
       }

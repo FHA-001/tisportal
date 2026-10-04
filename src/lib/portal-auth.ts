@@ -1,10 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import {
   clearCustomSession,
-  getCustomSession,
-  setCustomSession,
-  type ParentSession,
-  type TeacherSession,
 } from '@/lib/auth-utils';
 
 export type PortalRole = 'admin' | 'teacher' | 'accountant' | 'parent';
@@ -64,93 +60,6 @@ export async function getPortalIdentity(): Promise<PortalIdentity> {
   return (data || {}) as PortalIdentity;
 }
 
-async function bootstrapCompatibilitySession(
-  expectedRole?: Exclude<PortalRole, 'admin'>,
-  mustChangePassword = false,
-): Promise<PortalLoginResult> {
-  const existing = getCustomSession();
-
-  if (
-    existing &&
-    existing.role !== 'student' &&
-    (!expectedRole || existing.role === expectedRole) &&
-    existing.session_token
-  ) {
-    if (existing.must_change_password !== mustChangePassword) {
-      setCustomSession({
-        ...existing,
-        must_change_password: mustChangePassword,
-      });
-    }
-
-    return {
-      role: existing.role,
-      full_name: existing.full_name,
-      email: existing.email,
-      must_change_password: mustChangePassword,
-    };
-  }
-
-  const { data, error } = await supabase.rpc('bootstrap_portal_session');
-
-  if (error) {
-    return { error: error.message };
-  }
-
-  if (data?.error === 'inactive') {
-    return { error: INACTIVE_MESSAGE };
-  }
-
-  if (data?.error) {
-    return { error: String(data.error) };
-  }
-
-  const role = data?.role as PortalRole | undefined;
-
-  if (!role || !['teacher', 'accountant', 'parent'].includes(role)) {
-    return { error: 'This account is not configured for this portal.' };
-  }
-
-  if (expectedRole && role !== expectedRole) {
-    return { error: 'This account does not have access to this portal section.' };
-  }
-
-  if (!data?.id || !data?.session_token) {
-    return { error: 'Unable to initialize your portal session.' };
-  }
-
-  if (role === 'parent') {
-    const session: ParentSession = {
-      role: 'parent',
-      id: data.id,
-      full_name: data.full_name || 'Parent',
-      email: data.email || '',
-      must_change_password: mustChangePassword,
-      session_token: data.session_token,
-    };
-
-    setCustomSession(session);
-  } else {
-    const session: TeacherSession = {
-      role,
-      id: data.id,
-      full_name: data.full_name || (role === 'accountant' ? 'Accountant' : 'Teacher'),
-      email: data.email || '',
-      must_change_password: mustChangePassword,
-      session_token: data.session_token,
-    };
-
-    setCustomSession(session);
-  }
-
-  return {
-    role,
-    full_name: data.full_name || undefined,
-    email: data.email || undefined,
-    must_change_password: mustChangePassword,
-  };
-}
-
 export async function loginPortalUser(
   email: string,
   password: string,
@@ -191,27 +100,14 @@ export async function loginPortalUser(
       return { error: 'This account does not have access to this login section.' };
     }
 
-    if (identity.role === 'admin') {
-      return {
-        role: 'admin',
-        email: identity.email || email,
-        full_name: identity.full_name || undefined,
-        must_change_password: false,
-      };
-    }
-
-    const compatibility = await bootstrapCompatibilitySession(
-      identity.role,
-      identity.must_change_password === true,
-    );
-
-    if (compatibility.error) {
-      await supabase.auth.signOut();
-      clearCustomSession();
-      return compatibility;
-    }
-
-    return compatibility;
+    // Return identity directly for all migrated roles (admin, teacher, accountant, parent)
+    // No compatibility custom session is created
+    return {
+      role: identity.role,
+      email: identity.email || email,
+      full_name: identity.full_name || undefined,
+      must_change_password: identity.must_change_password || false,
+    };
   } catch (error: any) {
     await supabase.auth.signOut();
     clearCustomSession();
@@ -241,26 +137,18 @@ export async function restorePortalSession(
       return { error: 'Portal profile not found.' };
     }
 
-    if (identity.role === 'admin') {
-      if (expectedRole) {
-        return { error: 'Role mismatch.' };
-      }
-
-      return {
-        role: 'admin',
-        email: session.user.email || undefined,
-        must_change_password: false,
-      };
-    }
-
     if (expectedRole && identity.role !== expectedRole) {
       return { error: 'Role mismatch.' };
     }
 
-    return await bootstrapCompatibilitySession(
-      identity.role,
-      identity.must_change_password === true,
-    );
+    // Return identity directly for all migrated roles
+    // No compatibility custom session is created
+    return {
+      role: identity.role,
+      email: identity.email || session.user.email || undefined,
+      full_name: identity.full_name || undefined,
+      must_change_password: identity.must_change_password || false,
+    };
   } catch (error: any) {
     return { error: error?.message || 'Unable to restore portal session.' };
   }
@@ -322,6 +210,7 @@ export async function changePortalAuthPassword(
     return { error: passwordError.message };
   }
 
+  // Clear must_change_password flag in the database
   const { data, error: completionError } = await supabase.rpc(
     'complete_portal_password_change',
   );
@@ -334,14 +223,8 @@ export async function changePortalAuthPassword(
     return { error: String(data.error) };
   }
 
-  const existing = getCustomSession();
-
-  if (existing && existing.role !== 'student' && existing.role === identity.role) {
-    setCustomSession({
-      ...existing,
-      must_change_password: false,
-    });
-  }
+  // No custom session update needed - flag is now in the database
+  // Frontend will get updated must_change_password from getPortalIdentity() on next check
 
   return { success: true };
 }

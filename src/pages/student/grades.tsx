@@ -10,7 +10,7 @@ import { useStudentGrades } from '@/hooks/use-records';
 import { useAcademicSessions } from '@/hooks/use-academics';
 import { getCustomSession } from '@/lib/auth-utils';
 import { generateReportCardPdf, buildReportCardDoc } from '@/lib/reportCardPdf';
-import { calculateCumulativeAverage, groupGradesByTerm } from '@/lib/reportCardData';
+import { calculateCumulativeAverage, groupGradesByTerm, isGradeRowCompletelyBlank, isSeniorSecondary } from '@/lib/reportCardData';
 import { Download, Loader2, Award, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { SCHOOL_CONFIG } from '@/lib/app-config';
@@ -28,6 +28,17 @@ export default function StudentGrades() {
     session: activeSession?.name
   });
 
+  // For SSS students, filter out completely blank grade rows (student does not offer subject)
+  const filteredGrades = session?.tier && isSeniorSecondary(session.tier)
+    ? grades.filter(g => !isGradeRowCompletelyBlank({
+        test_1: g.test_1,
+        test_2: g.test_2,
+        project_1: g.project_1,
+        assignment_1: g.assignment_1,
+        exam: g.exam,
+      }))
+    : grades;
+
   const getBadgeColor = (letter: string | null) => {
     if (!letter) return 'bg-muted text-muted-foreground';
     if (letter.startsWith('A')) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400';
@@ -37,12 +48,12 @@ export default function StudentGrades() {
     return 'bg-muted text-muted-foreground';
   };
 
-  const validGrades = grades.filter(g => g.total !== null);
+  const validGrades = filteredGrades.filter(g => g.total !== null);
   const totalScored = validGrades.reduce((sum, g) => sum + (g.total || 0), 0);
   const average = validGrades.length > 0 ? (totalScored / validGrades.length).toFixed(1) : '0.0';
 
   const handleDownloadPdf = async () => {
-    if (grades.length === 0) {
+    if (filteredGrades.length === 0) {
       toast.error('No grades available to download for this term.');
       return;
     }
@@ -50,7 +61,7 @@ export default function StudentGrades() {
     try {
       toast.loading('Generating report card...', { id: 'pdf-gen' });
 
-      const pdfGrades = grades.map(g => ({
+      const pdfGrades = filteredGrades.map(g => ({
         subject: g.class_subjects?.subjects?.name || 'Unknown',
         test_1: g.test_1,
         test_2: g.test_2,
@@ -63,8 +74,8 @@ export default function StudentGrades() {
       }));
 
       // Find class name and class teacher from the first grade record
-      const className = grades[0]?.class_subjects?.classes?.name || 'Unknown Class';
-      const classTeacherName = grades[0]?.class_teacher_name || undefined;
+      const className = filteredGrades[0]?.class_subjects?.classes?.name || 'Unknown Class';
+      const classTeacherName = filteredGrades[0]?.class_teacher_name || undefined;
 
       // Fetch all-term grades for cumulative average calculation
       let cumulativeAverage: number | null = null;

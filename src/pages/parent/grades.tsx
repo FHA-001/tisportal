@@ -9,7 +9,7 @@ import { useParentChildren } from '@/hooks/use-parents';
 import { useParentChildGrades } from '@/hooks/use-records';
 import { useAcademicSessions } from '@/hooks/use-academics';
 import { generateReportCardPdf, buildReportCardDoc } from '@/lib/reportCardPdf';
-import { calculateCumulativeAverage, groupGradesByTerm } from '@/lib/reportCardData';
+import { calculateCumulativeAverage, groupGradesByTerm, isGradeRowCompletelyBlank, isSeniorSecondary } from '@/lib/reportCardData';
 import { Award, Loader2, ChevronDown, User, Download, Printer } from 'lucide-react';
 import { getGradeLetter, getGradeRemark } from '@/lib/auth-utils';
 import { toast } from 'sonner';
@@ -35,8 +35,19 @@ export default function ParentGrades() {
     { term: selectedTerm, session: activeSession?.name }
   );
 
+  // For SSS students, filter out completely blank grade rows (student does not offer subject)
+  const filteredGrades = selectedChild?.students?.tier && isSeniorSecondary(selectedChild.students.tier)
+    ? grades.filter(g => !isGradeRowCompletelyBlank({
+        test_1: g.test_1,
+        test_2: g.test_2,
+        project_1: g.project_1,
+        assignment_1: g.assignment_1,
+        exam: g.exam,
+      }))
+    : grades;
+
   const handleDownloadPdf = async () => {
-    if (!selectedChild || !selectedChild.students || grades.length === 0) {
+    if (!selectedChild || !selectedChild.students || filteredGrades.length === 0) {
       toast.error('No grades available to download for this child.');
       return;
     }
@@ -50,7 +61,7 @@ export default function ParentGrades() {
     try {
       toast.loading('Generating report card...', { id: 'pdf-gen' });
 
-      const pdfGrades = grades.map((g: any) => ({
+      const pdfGrades = filteredGrades.map((g: any) => ({
         subject: g.class_subjects?.subjects?.name || 'Unknown',
         test_1: g.test_1,
         test_2: g.test_2,
@@ -63,8 +74,8 @@ export default function ParentGrades() {
       }));
 
       // Find class name and class teacher from the first grade record
-      const className = grades[0]?.class_subjects?.classes?.name || selectedChild.students.classes?.name || 'Unknown Class';
-      const classTeacherName = grades[0]?.class_teacher_name || undefined;
+      const className = filteredGrades[0]?.class_subjects?.classes?.name || selectedChild.students.classes?.name || 'Unknown Class';
+      const classTeacherName = filteredGrades[0]?.class_teacher_name || undefined;
 
       // Fetch all-term grades for cumulative average calculation
       let cumulativeAverage: number | null = null;
@@ -97,7 +108,7 @@ export default function ParentGrades() {
   };
 
   const handlePrint = async () => {
-    if (!selectedChild || !selectedChild.students || grades.length === 0) {
+    if (!selectedChild || !selectedChild.students || filteredGrades.length === 0) {
       toast.error('No grades available to print for this child.');
       return;
     }
@@ -111,7 +122,7 @@ export default function ParentGrades() {
     try {
       toast.loading('Generating report card for printing...', { id: 'pdf-print' });
 
-      const pdfGrades = grades.map((g: any) => ({
+      const pdfGrades = filteredGrades.map((g: any) => ({
         subject: g.class_subjects?.subjects?.name || 'Unknown',
         test_1: g.test_1,
         test_2: g.test_2,
@@ -124,8 +135,8 @@ export default function ParentGrades() {
       }));
 
       // Find class name and class teacher from the first grade record
-      const className = grades[0]?.class_subjects?.classes?.name || selectedChild.students.classes?.name || 'Unknown Class';
-      const classTeacherName = grades[0]?.class_teacher_name || undefined;
+      const className = filteredGrades[0]?.class_subjects?.classes?.name || selectedChild.students.classes?.name || 'Unknown Class';
+      const classTeacherName = filteredGrades[0]?.class_teacher_name || undefined;
 
       // Fetch all-term grades for cumulative average calculation
       let cumulativeAverage: number | null = null;
@@ -160,7 +171,7 @@ export default function ParentGrades() {
   };
 
   // Group grades by term/session
-  const groupedGrades = grades.reduce((acc: any, grade: any) => {
+  const groupedGrades = filteredGrades.reduce((acc: any, grade: any) => {
     const key = `${grade.session} - ${grade.term}`;
     if (!acc[key]) acc[key] = [];
     acc[key].push(grade);
@@ -304,14 +315,14 @@ export default function ParentGrades() {
                     <div className="p-4 bg-muted/50 rounded-lg">
                       <div className="text-sm text-muted-foreground mb-1">Average Score</div>
                       <div className="text-2xl font-bold">
-                        {grades.length > 0 
-                          ? (grades.reduce((sum: number, g: any) => sum + (g.total || 0), 0) / grades.length).toFixed(1)
+                        {filteredGrades.length > 0
+                          ? (filteredGrades.reduce((sum: number, g: any) => sum + (g.total || 0), 0) / filteredGrades.length).toFixed(1)
                           : '0'}
                       </div>
                     </div>
                     <div className="p-4 bg-muted/50 rounded-lg">
                       <div className="text-sm text-muted-foreground mb-1">Grade Entries</div>
-                      <div className="text-2xl font-bold">{grades.length}</div>
+                      <div className="text-2xl font-bold">{filteredGrades.length}</div>
                     </div>
                   </div>
                 )}

@@ -7,6 +7,44 @@ export type TermGrades = {
 };
 
 /**
+ * Determines if a grade row is completely blank (all assessment fields are NULL).
+ * Used for SSS optional subject filtering: a completely blank grade row indicates
+ * the student does not offer the subject and should not appear on their report card.
+ *
+ * IMPORTANT: This checks for NULL values only. A score of 0 is a valid entered score
+ * and will return false (the subject should remain visible).
+ *
+ * @param grade - The grade row to check
+ * @returns true if ALL assessment fields are NULL, false otherwise
+ */
+export function isGradeRowCompletelyBlank(grade: {
+  test_1: number | null;
+  test_2: number | null;
+  project_1: number | null;
+  assignment_1: number | null;
+  exam: number | null;
+}): boolean {
+  return (
+    grade.test_1 === null &&
+    grade.test_2 === null &&
+    grade.project_1 === null &&
+    grade.assignment_1 === null &&
+    grade.exam === null
+  );
+}
+
+/**
+ * Determines if a student is in Senior Secondary (SSS).
+ * SSS students have optional subjects that need filtering.
+ *
+ * @param tier - The student's tier string
+ * @returns true if the student is in Senior Secondary, false otherwise
+ */
+export function isSeniorSecondary(tier: string): boolean {
+  return tier.toLowerCase().includes('senior');
+}
+
+/**
  * Calculate term average from grades
  * Uses the same formula as the existing report-card system:
  * sum(subject totals) / number of graded subjects

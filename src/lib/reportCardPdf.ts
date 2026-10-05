@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable';
 import { SCHOOL } from './app-config';
 import { getGradeRemark, type GradeLetter, getMaxScores } from './auth-utils';
 import { getClassTeacherRemark, getPrincipalRemark } from './remarks';
+import { isGradeRowCompletelyBlank, isSeniorSecondary } from './reportCardData';
 
 export type ReportCardGradeRow = {
   subject: string;
@@ -159,7 +160,13 @@ export async function buildReportCardDoc(
   const contentWidth = pageWidth - marginX * 2;
   const centerX = pageWidth / 2;
 
-  const subjectCount = grades.length;
+  // Defensive filtering: for SSS students, filter out completely blank grade rows
+  // This ensures that even if a caller forgets to filter, blank SSS subjects won't render
+  const filteredGrades = isSeniorSecondary(student.tier)
+    ? grades.filter(grade => !isGradeRowCompletelyBlank(grade))
+    : grades;
+
+  const subjectCount = filteredGrades.length;
   const layoutMode = getLayoutMode(subjectCount);
   const config = LAYOUT_CONFIGS[layoutMode];
 
@@ -392,7 +399,7 @@ const logoUrl = 'https://i.ibb.co/vxyHnfg1/TIS-LOGO.png';
 
     head: tableHead,
 
-    body: grades.map((grade) => {
+    body: filteredGrades.map((grade) => {
       const remark =
         grade.remark ||
         getGradeRemark(
@@ -493,7 +500,7 @@ const logoUrl = 'https://i.ibb.co/vxyHnfg1/TIS-LOGO.png';
     didParseCell: (data) => {
       if (data.section !== 'body') return;
 
-      const rowGrade = grades[data.row.index];
+      const rowGrade = filteredGrades[data.row.index];
       if (!rowGrade) return;
 
       if (data.column.index === 6) {
@@ -521,7 +528,7 @@ const logoUrl = 'https://i.ibb.co/vxyHnfg1/TIS-LOGO.png';
   // Calculate average
   // ---------------------------------------------------------------------------
 
-  const validGrades = grades.filter(
+  const validGrades = filteredGrades.filter(
     (grade) => grade.total !== null,
   );
 

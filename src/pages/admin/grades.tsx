@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { useClasses, useAcademicSessions } from '@/hooks/use-academics';
 import { useAdminClassResults } from '@/hooks/use-records';
 import { generateReportCardPdf, buildReportCardDoc } from '@/lib/reportCardPdf';
-import { calculateCumulativeAverage, groupGradesByTerm } from '@/lib/reportCardData';
+import { calculateCumulativeAverage, groupGradesByTerm, isGradeRowCompletelyBlank, isSeniorSecondary } from '@/lib/reportCardData';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -66,7 +66,7 @@ export default function AdminGrades() {
     incomplete: (overview?.incomplete_count ?? 0) + (overview?.no_grades_count ?? 0),
   }), [overview]);
 
-  const fetchStudentGrades = async (studentId: string) => {
+  const fetchStudentGrades = async (studentId: string, studentTier?: string) => {
     const { data, error } = await supabase
       .from('grades')
       .select(`
@@ -87,7 +87,7 @@ export default function AdminGrades() {
 
     if (error) throw error;
 
-    return (data ?? []).map((row: any) => ({
+    const grades = (data ?? []).map((row: any) => ({
       id: row.id,
       subject: row.class_subjects?.subjects?.name || 'Unknown Subject',
       test_1: row.test_1,
@@ -99,6 +99,13 @@ export default function AdminGrades() {
       grade_letter: row.grade_letter,
       remark: row.remark,
     })) as StudentGradeDetail[];
+
+    // For SSS students, filter out completely blank grade rows (student does not offer subject)
+    if (studentTier && isSeniorSecondary(studentTier)) {
+      return grades.filter(grade => !isGradeRowCompletelyBlank(grade));
+    }
+
+    return grades;
   };
 
   const sanitizeFilename = (name: string): string => {
@@ -211,7 +218,13 @@ export default function AdminGrades() {
         setBulkProgress({ current: i + 1, total: eligibleStudents.length });
 
         try {
-          const grades = currentTermGradesByStudent.get(student.id) || [];
+          let grades = currentTermGradesByStudent.get(student.id) || [];
+
+          // For SSS students, filter out completely blank grade rows (student does not offer subject)
+          if (student.tier && isSeniorSecondary(student.tier)) {
+            grades = grades.filter(grade => !isGradeRowCompletelyBlank(grade));
+          }
+
           if (grades.length === 0) {
             setBulkErrors((prev) => [...prev, `${student.full_name}: No grades found`]);
             continue;
@@ -300,7 +313,7 @@ export default function AdminGrades() {
     setDetailGrades([]);
     setDetailLoading(true);
     try {
-      setDetailGrades(await fetchStudentGrades(student.id));
+      setDetailGrades(await fetchStudentGrades(student.id, student.tier));
     } catch (err: any) {
       toast.error(err?.message || 'Failed to load student result.');
       setDetailStudent(null);
@@ -314,7 +327,7 @@ export default function AdminGrades() {
     toast.loading('Generating report card...', { id: 'pdf-gen' });
 
     try {
-      const grades = await fetchStudentGrades(student.id);
+      const grades = await fetchStudentGrades(student.id, student.tier);
       if (grades.length === 0) {
         toast.error('No grades found for this student in the selected term.', { id: 'pdf-gen' });
         return;

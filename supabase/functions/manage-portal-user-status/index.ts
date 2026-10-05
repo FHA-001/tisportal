@@ -340,23 +340,10 @@ Deno.serve(async (req) => {
               "reviewed_by",
               profileId,
             );
-        } else {
-          dependencies.student_links =
-            await countRows(
-              adminClient,
-              "parent_students",
-              "parent_id",
-              profileId,
-            );
-
-          dependencies.payment_submissions =
-            await countRows(
-              adminClient,
-              "payment_submissions",
-              "parent_id",
-              profileId,
-            );
         }
+        // Parent deletion no longer checks for dependencies
+        // Parent deletion preserves payment history via ON DELETE SET NULL
+        // and parent_students cascades automatically
       } catch (dependencyError) {
         console.error(
           "Permanent-delete dependency check failed",
@@ -425,37 +412,11 @@ Deno.serve(async (req) => {
       }
 
       /*
-       * Delete the portal profile first.
+       * Delete the Supabase Auth user first.
        *
-       * This is safe because the account must already be
-       * deactivated, meaning the linked Auth user is banned.
-       */
-      const {
-        error: profileDeleteError,
-      } = await adminClient
-        .from(profileTable)
-        .delete()
-        .eq("id", profileId);
-
-      if (profileDeleteError) {
-        console.error(
-          "Permanent profile deletion failed",
-          profileDeleteError,
-        );
-
-        return json(
-          {
-            success: false,
-            error: "profile_delete_failed",
-            detail:
-              profileDeleteError.message ?? null,
-          },
-          500,
-        );
-      }
-
-      /*
-       * Now remove the linked Supabase Auth user.
+       * This prevents a scenario where the portal profile is deleted
+       * but the Auth user remains able to authenticate.
+       * If Auth deletion fails, the profile remains and we return an error.
        */
       const {
         error: authDeleteError,
@@ -466,18 +427,48 @@ Deno.serve(async (req) => {
 
       if (authDeleteError) {
         console.error(
-          "CRITICAL: portal profile deleted but Auth cleanup failed",
+          "Auth user deletion failed",
           authDeleteError,
         );
 
         return json(
           {
             success: false,
-            error: "auth_cleanup_required",
+            error: "auth_deletion_failed",
             detail:
               authDeleteError.message ?? null,
-            profile_deleted: true,
-            auth_user_deleted: false,
+          },
+          500,
+        );
+      }
+
+      /*
+       * Now delete the portal profile.
+       *
+       * Since the Auth user is already deleted/banned, the profile
+       * deletion will cascade appropriately for dependent records.
+       */
+      const {
+        error: profileDeleteError,
+      } = await adminClient
+        .from(profileTable)
+        .delete()
+        .eq("id", profileId);
+
+      if (profileDeleteError) {
+        console.error(
+          "CRITICAL: Auth user deleted but profile deletion failed",
+          profileDeleteError,
+        );
+
+        return json(
+          {
+            success: false,
+            error: "profile_cleanup_required",
+            detail:
+              profileDeleteError.message ?? null,
+            auth_user_deleted: true,
+            profile_deleted: false,
           },
           500,
         );

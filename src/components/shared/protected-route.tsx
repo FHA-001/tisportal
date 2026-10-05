@@ -3,9 +3,9 @@ import { useLocation } from 'wouter';
 import { supabase } from '@/lib/supabaseClient';
 import { LoadingScreen } from './loading-screen';
 import { toast } from 'sonner';
+import { ADMIN_SESSION_KEY, setAdminSessionTimestamp } from '@/lib/portal-auth';
 
 const ADMIN_SESSION_TIMEOUT_MINUTES = 30;
-const ADMIN_SESSION_KEY = 'admin_session_timestamp';
 
 export function ProtectedRoute({ children, requiredRole = 'admin' }: { children: React.ReactNode, requiredRole?: 'admin' | 'teacher' | 'student' | 'parent' }) {
   const [, setLocation] = useLocation();
@@ -14,7 +14,7 @@ export function ProtectedRoute({ children, requiredRole = 'admin' }: { children:
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         setLocation('/login');
         return;
@@ -29,26 +29,27 @@ export function ProtectedRoute({ children, requiredRole = 'admin' }: { children:
           setLocation('/login');
           return;
         }
-      }
 
-      // Check admin session timeout
-      const timestamp = localStorage.getItem(ADMIN_SESSION_KEY);
-      if (timestamp) {
-        const sessionTime = parseInt(timestamp, 10);
-        const currentTime = Date.now();
-        const elapsedMinutes = (currentTime - sessionTime) / (1000 * 60);
+        // Check admin session timeout
+        const timestamp = localStorage.getItem(ADMIN_SESSION_KEY);
+        if (timestamp) {
+          const sessionTime = parseInt(timestamp, 10);
+          const currentTime = Date.now();
+          const elapsedMinutes = (currentTime - sessionTime) / (1000 * 60);
 
-        if (elapsedMinutes > ADMIN_SESSION_TIMEOUT_MINUTES) {
-          await supabase.auth.signOut();
-          localStorage.removeItem(ADMIN_SESSION_KEY);
-          toast.error('Your session has expired. Please log in again.');
-          setLocation('/login');
-          return;
+          if (elapsedMinutes > ADMIN_SESSION_TIMEOUT_MINUTES) {
+            await supabase.auth.signOut();
+            localStorage.removeItem(ADMIN_SESSION_KEY);
+            toast.error('Your session has expired. Please log in again.');
+            setLocation('/login');
+            return;
+          }
         }
+
+        // Update timestamp on session access (refreshes timeout window)
+        setAdminSessionTimestamp();
       }
 
-      // Update timestamp on session access
-      localStorage.setItem(ADMIN_SESSION_KEY, Date.now().toString());
       setIsLoading(false);
     };
 
@@ -57,8 +58,6 @@ export function ProtectedRoute({ children, requiredRole = 'admin' }: { children:
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!session) {
         setLocation('/login');
-      } else if (_event === 'SIGNED_IN') {
-        localStorage.setItem(ADMIN_SESSION_KEY, Date.now().toString());
       }
     });
 

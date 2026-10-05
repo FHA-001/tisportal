@@ -34,6 +34,7 @@ import { TISLogo } from './tis-logo';
 import { ThemeToggle } from './theme-toggle';
 import { supabase } from '@/lib/supabaseClient';
 import { getCustomSession, signOutCustomSession } from '@/lib/auth-utils';
+import { clearAdminSessionTimestamp } from '@/lib/portal-auth';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePortalIdentity } from '@/hooks/use-portal-identity';
 
@@ -258,6 +259,11 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
   };
 
   const handleSignOut = async () => {
+    // Clear admin session timestamp on logout
+    if (role === 'admin') {
+      clearAdminSessionTimestamp();
+    }
+
     // All roles except Student use Supabase Auth sign-out
     if (role !== 'student') {
       await supabase.auth.signOut();

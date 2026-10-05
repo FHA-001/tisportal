@@ -1133,7 +1133,7 @@ export async function adminResetPassword(
 
 
 
-// Password strength validation
+// Password validation
 
 
 
@@ -1165,27 +1165,11 @@ export function validatePasswordStrength(password: string): {
 
 
 
-  if (password.length < 8) {
+  if (password.length < 6) {
 
 
 
-    errors.push('Password must be at least 8 characters long');
-
-
-
-  }
-
-
-
-
-
-
-
-  if (!/[A-Z]/.test(password)) {
-
-
-
-    errors.push('Password must contain at least one uppercase letter');
+    errors.push('Password must be at least 6 characters');
 
 
 
@@ -1197,47 +1181,10 @@ export function validatePasswordStrength(password: string): {
 
 
 
-  if (!/[a-z]/.test(password)) {
-
-
-
-    errors.push('Password must contain at least one lowercase letter');
-
-
-
-  }
 
 
 
 
-
-
-
-  if (!/[0-9]/.test(password)) {
-
-
-
-    errors.push('Password must contain at least one number');
-
-
-
-  }
-
-
-
-
-
-
-
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-
-
-
-    errors.push('Password must contain at least one special character');
-
-
-
-  }
 
 
 
@@ -1349,7 +1296,7 @@ export async function createStudentByTeacher(payload: {
     return {
       error: {
         message:
-          'Password must be at least 8 characters long.'
+          'Password must be at least 6 characters.'
       }
     };
   }
@@ -1399,7 +1346,7 @@ export async function manageStudentParentByTeacher(payload: {
     parent_email_required: 'Parent email is required.',
     parent_not_found: 'No existing Parent account was found with that email.',
     parent_name_required: 'Parent name is required when creating a Parent account.',
-    parent_password_too_short: 'Parent password must be at least 8 characters.',
+    parent_password_too_short: 'Parent password must be at least 6 characters.',
     invalid_relationship: 'Please select a valid parent relationship.',
     email_used_by_staff_account: 'That email is already used by a staff account.',
     email_exists_in_auth_without_parent_profile: 'That email already exists in authentication but is not linked to a Parent profile. Please contact an Admin.',

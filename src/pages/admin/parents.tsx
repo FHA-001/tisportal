@@ -1550,7 +1550,7 @@ export default function AdminParents() {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Permanently Delete Parent Account</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Permanently delete {parent.full_name}? This is only intended for accidental or test accounts. The server will refuse deletion if this parent has linked students or payment submissions. This action cannot be undone.
+                                  Delete this parent permanently? Their login and parent profile will be removed. Historical school payment records will be preserved. This action cannot be undone.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>

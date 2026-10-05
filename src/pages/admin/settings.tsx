@@ -12,7 +12,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAcademicSessions, useCreateSession, useUpdateSession } from '@/hooks/use-academics';
 import { SCHOOL_CONFIG } from '@/lib/app-config';
 import { format } from 'date-fns';
-import { Plus, Calendar, Shield, Settings2 } from 'lucide-react';
+import { Plus, Calendar, Settings2, Key, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { changePortalAuthPassword } from '@/lib/portal-auth';
 
 export default function AdminSettings() {
   const { data: sessions = [] } = useAcademicSessions();
@@ -28,6 +30,71 @@ export default function AdminSettings() {
   });
 
   const [activeTab, setActiveTab] = useState('academic');
+
+  // Password change state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordErrors, setPasswordErrors] = useState<{ [key: string]: string }>({});
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordErrors({});
+
+    // Validation
+    if (!currentPassword) {
+      setPasswordErrors({ currentPassword: 'Current password is required' });
+      return;
+    }
+
+    if (!newPassword) {
+      setPasswordErrors({ newPassword: 'New password is required' });
+      return;
+    }
+
+    // Admin-specific validation: minimum 6 characters
+    if (newPassword.length < 6) {
+      setPasswordErrors({ newPassword: 'Password must be at least 6 characters' });
+      return;
+    }
+
+    if (!confirmPassword) {
+      setPasswordErrors({ confirmPassword: 'Please confirm your new password' });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordErrors({ confirmPassword: 'Passwords do not match' });
+      return;
+    }
+
+    setIsChangingPassword(true);
+
+    try {
+      const result = await changePortalAuthPassword(currentPassword, newPassword);
+
+      if (result.success) {
+        toast.success('Password changed successfully');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        if (result.error === 'invalid_password') {
+          setPasswordErrors({ currentPassword: 'Current password is incorrect' });
+        } else {
+          setPasswordErrors({ newPassword: result.error || 'Failed to change password' });
+        }
+      }
+    } catch (error: any) {
+      setPasswordErrors({ newPassword: error?.message || 'An unexpected error occurred' });
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +120,7 @@ export default function AdminSettings() {
           <TabsList className="bg-card border border-border p-1 w-full h-auto grid grid-cols-1 sm:grid-cols-3 sm:w-auto">
             <TabsTrigger value="academic" className="justify-start sm:justify-center py-2.5 data-[state=active]:bg-muted"><Calendar className="w-4 h-4 mr-2" /> Academic Sessions</TabsTrigger>
             <TabsTrigger value="general" className="justify-start sm:justify-center py-2.5 data-[state=active]:bg-muted"><Settings2 className="w-4 h-4 mr-2" /> General Config</TabsTrigger>
-            <TabsTrigger value="security" className="justify-start sm:justify-center py-2.5 data-[state=active]:bg-muted"><Shield className="w-4 h-4 mr-2" /> Security & Audit</TabsTrigger>
+            <TabsTrigger value="security" className="justify-start sm:justify-center py-2.5 data-[state=active]:bg-muted"><Key className="w-4 h-4 mr-2" /> Security & Audit</TabsTrigger>
           </TabsList>
 
           <TabsContent value="academic" className="space-y-6 outline-none">
@@ -164,34 +231,110 @@ export default function AdminSettings() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="security" className="outline-none space-y-6">
+          <TabsContent value="security" className="outline-none">
             <Card className="border-border shadow-sm">
               <CardHeader>
-                <CardTitle>Admin Account Management</CardTitle>
-                <CardDescription>System administrator access control.</CardDescription>
+                <CardTitle>Change Password</CardTitle>
+                <CardDescription>Update your admin account password for security.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-center border border-dashed rounded-xl p-8 bg-muted/30">
-                  <div className="text-center">
-                    <Shield className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-50" />
-                    <p className="text-muted-foreground font-medium mb-1">Admin provisioning restricted</p>
-                    <p className="text-sm text-muted-foreground">Additional administrators must be provisioned by an authorized system administrator.</p>
+                <form onSubmit={handlePasswordChange} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="current-password">Current Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="current-password"
+                        type={showCurrentPassword ? 'text' : 'password'}
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        placeholder="Enter your current password"
+                        disabled={isChangingPassword}
+                        className={passwordErrors.currentPassword ? 'border-destructive' : ''}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    {passwordErrors.currentPassword && (
+                      <p className="text-sm text-destructive mt-1">{passwordErrors.currentPassword}</p>
+                    )}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
 
-            <Card className="border-border shadow-sm">
-              <CardHeader>
-                <CardTitle>Audit Logs</CardTitle>
-                <CardDescription>Recent system activity.</CardDescription>
-              </CardHeader>
-              <CardContent className="h-64 flex items-center justify-center border border-dashed rounded-xl m-6 bg-muted/30">
-                <div className="text-center">
-                  <Shield className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-50" />
-                  <p className="text-muted-foreground font-medium">Audit logging enabled</p>
-                  <p className="text-sm text-muted-foreground">Logs are written to the database.</p>
-                </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-password">New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="new-password"
+                        type={showNewPassword ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Enter your new password"
+                        disabled={isChangingPassword}
+                        className={passwordErrors.newPassword ? 'border-destructive' : ''}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Minimum 6 characters.</p>
+                    {passwordErrors.newPassword && (
+                      <p className="text-sm text-destructive mt-1">{passwordErrors.newPassword}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-password">Confirm New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirm-password"
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Confirm your new password"
+                        disabled={isChangingPassword}
+                        className={passwordErrors.confirmPassword ? 'border-destructive' : ''}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    {passwordErrors.confirmPassword && (
+                      <p className="text-sm text-destructive mt-1">{passwordErrors.confirmPassword}</p>
+                    )}
+                  </div>
+
+                  <div className="pt-2">
+                    <Button
+                      type="submit"
+                      disabled={isChangingPassword}
+                      className="bg-navy-700 hover:bg-navy-800 text-white"
+                    >
+                      {isChangingPassword ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Changing Password...
+                        </>
+                      ) : (
+                        <>
+                          <Key className="w-4 h-4 mr-2" />
+                          Change Password
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </form>
               </CardContent>
             </Card>
           </TabsContent>

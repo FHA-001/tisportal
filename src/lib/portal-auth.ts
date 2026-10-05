@@ -33,6 +33,17 @@ type PortalPasswordChangeResult = {
 const INACTIVE_MESSAGE =
   'This account has been temporarily deactivated. Please contact the school administration.';
 
+// Admin session timestamp management
+export const ADMIN_SESSION_KEY = 'admin_session_timestamp';
+
+export function clearAdminSessionTimestamp(): void {
+  localStorage.removeItem(ADMIN_SESSION_KEY);
+}
+
+export function setAdminSessionTimestamp(): void {
+  localStorage.setItem(ADMIN_SESSION_KEY, Date.now().toString());
+}
+
 function friendlyAuthError(message?: string): string {
   const normalized = (message || '').toLowerCase();
 
@@ -66,6 +77,7 @@ export async function loginPortalUser(
   allowedRoles: PortalRole[],
 ): Promise<PortalLoginResult> {
   clearCustomSession();
+  clearAdminSessionTimestamp();
   await supabase.auth.signOut();
 
   const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -100,6 +112,12 @@ export async function loginPortalUser(
       return { error: 'This account does not have access to this login section.' };
     }
 
+    // Set admin session timestamp ONLY after successful admin authentication
+    // This ensures a fresh timeout window for each new admin login
+    if (identity.role === 'admin') {
+      setAdminSessionTimestamp();
+    }
+
     // Return identity directly for all migrated roles (admin, teacher, accountant, parent)
     // No compatibility custom session is created
     return {
@@ -111,6 +129,7 @@ export async function loginPortalUser(
   } catch (error: any) {
     await supabase.auth.signOut();
     clearCustomSession();
+    clearAdminSessionTimestamp();
     return { error: error?.message || 'Unable to initialize portal access.' };
   }
 }
@@ -174,7 +193,7 @@ export async function changePortalAuthPassword(
     return { error: error?.message || 'Unable to verify portal account.' };
   }
 
-  if (!identity.role || !['teacher', 'accountant', 'parent'].includes(identity.role)) {
+  if (!identity.role || !['teacher', 'accountant', 'parent', 'admin'].includes(identity.role)) {
     return { error: 'unsupported_role' };
   }
 
@@ -210,17 +229,24 @@ export async function changePortalAuthPassword(
     return { error: passwordError.message };
   }
 
-  // Clear must_change_password flag in the database
-  const { data, error: completionError } = await supabase.rpc(
-    'complete_portal_password_change',
-  );
+  // Clear must_change_password flag in the database (only for teacher/accountant/parent)
+  if (identity.role !== 'admin') {
+    const { data, error: completionError } = await supabase.rpc(
+      'complete_portal_password_change',
+    );
 
-  if (completionError) {
-    return { error: completionError.message };
+    if (completionError) {
+      return { error: completionError.message };
+    }
+
+    if (data?.error) {
+      return { error: String(data.error) };
+    }
   }
 
-  if (data?.error) {
-    return { error: String(data.error) };
+  // Reset admin session timestamp after successful password change
+  if (identity.role === 'admin') {
+    setAdminSessionTimestamp();
   }
 
   // No custom session update needed - flag is now in the database

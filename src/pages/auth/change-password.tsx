@@ -34,7 +34,7 @@ import { ThemeToggle } from '@/components/shared/theme-toggle';
 
 
 
-import { getCustomSession, clearCustomSession, setCustomSession, changePassword, validatePasswordStrength } from '@/lib/auth-utils';
+import { getCustomSession, clearCustomSession, setCustomSession, changePassword } from '@/lib/auth-utils';
 
 import { changePortalAuthPassword } from '@/lib/portal-auth';
 import { usePortalIdentity } from '@/hooks/use-portal-identity';
@@ -255,28 +255,13 @@ export default function ChangePassword() {
 
 
 
-    // Password strength validation
 
 
-
-    const strengthValidation = validatePasswordStrength(newPassword);
-
-
-
-    if (!strengthValidation.isValid) {
-
-
-
-      setErrors({ newPassword: strengthValidation.errors[0] });
-
-
-
+    // Password validation: minimum 6 characters
+    if (newPassword.length < 6) {
+      setErrors({ newPassword: 'Password must be at least 6 characters' });
       return;
-
-
-
     }
-
 
 
 
@@ -456,12 +441,6 @@ export default function ChangePassword() {
 
 
 
-
-  const strengthValidation = validatePasswordStrength(newPassword);
-
-
-
-  const isStrong = strengthValidation.isValid && newPassword.length > 0;
 
 
 
@@ -904,130 +883,10 @@ export default function ChangePassword() {
 
 
                 )}
+                <p className="text-xs text-muted-foreground mt-1">Password must be at least 6 characters.</p>
 
 
 
-                {newPassword && !errors.newPassword && (
-
-
-
-                  <div className="space-y-1">
-
-
-
-                    {isStrong ? (
-
-
-
-                      <p className="text-sm text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-
-
-
-                        <CheckCircle2 className="w-3 h-3" />
-
-
-
-                        Password is strong
-
-
-
-                      </p>
-
-
-
-                    ) : (
-
-
-
-                      <div className="text-xs text-muted-foreground space-y-0.5">
-
-
-
-                        <p>Password must contain:</p>
-
-
-
-                        <ul className="list-disc list-inside space-y-0.5 ml-1">
-
-
-
-                          <li className={/[A-Z]/.test(newPassword) ? 'text-emerald-600 dark:text-emerald-400' : ''}>
-
-
-
-                            At least one uppercase letter
-
-
-
-                          </li>
-
-
-
-                          <li className={/[a-z]/.test(newPassword) ? 'text-emerald-600 dark:text-emerald-400' : ''}>
-
-
-
-                            At least one lowercase letter
-
-
-
-                          </li>
-
-
-
-                          <li className={/[0-9]/.test(newPassword) ? 'text-emerald-600 dark:text-emerald-400' : ''}>
-
-
-
-                            At least one number
-
-
-
-                          </li>
-
-
-
-                          <li className={/[!@#$%^&*(),.?":{}|<>]/.test(newPassword) ? 'text-emerald-600 dark:text-emerald-400' : ''}>
-
-
-
-                            At least one special character
-
-
-
-                          </li>
-
-
-
-                          <li className={newPassword.length >= 8 ? 'text-emerald-600 dark:text-emerald-400' : ''}>
-
-
-
-                            At least 8 characters
-
-
-
-                          </li>
-
-
-
-                        </ul>
-
-
-
-                      </div>
-
-
-
-                    )}
-
-
-
-                  </div>
-
-
-
-                )}
 
 
 

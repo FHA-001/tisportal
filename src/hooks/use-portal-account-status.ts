@@ -51,10 +51,10 @@ async function getEdgeFunctionErrorMessage(
           'This account cannot be permanently deleted because important school records are still linked to it.',
         dependency_check_failed:
           'The system could not safely verify whether this account has linked records.',
-        profile_delete_failed:
-          'The portal profile could not be permanently deleted.',
-        auth_cleanup_required:
-          'The portal profile was deleted, but the authentication account still requires administrator cleanup.',
+        auth_deletion_failed:
+          'The authentication account could not be deleted.',
+        profile_cleanup_required:
+          'The authentication account was deleted, but the portal profile still requires administrator cleanup.',
       };
 
       if (body?.error && friendlyErrors[body.error]) {
@@ -116,8 +116,6 @@ export const useManagePortalAccountStatus = () => {
             classes: 'assigned classes',
             homework: 'homework records',
             payment_reviews: 'payment review records',
-            student_links: 'student associations',
-            payment_submissions: 'payment submissions',
           };
 
           const dependencyText = Object.entries(data.dependencies)

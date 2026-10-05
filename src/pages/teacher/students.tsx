@@ -495,8 +495,8 @@ export default function TeacherStudents() {
         return;
       }
 
-      if (!newParentPassword || newParentPassword.length < 8) {
-        toast.error('Parent password must be at least 8 characters.');
+      if (!newParentPassword || newParentPassword.length < 6) {
+        toast.error('Parent password must be at least 6 characters.');
         return;
       }
     }

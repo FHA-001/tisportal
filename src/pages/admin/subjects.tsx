@@ -2,35 +2,44 @@ import { useState } from 'react';
 import { DashboardLayout } from '@/components/shared/dashboard-layout';
 import { ProtectedRoute } from '@/components/shared/protected-route';
 import { PageHeader } from '@/components/shared/page-header';
-import { useSubjects, useCreateSubject, useUpdateSubject, useDeleteSubject } from '@/hooks/use-academics';
+import { useSubjects, useCreateSubject, useUpdateSubject, useDeleteSubject, useDeactivateSubject, useReactivateSubject } from '@/hooks/use-academics';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Plus, Edit2, Trash2, Loader2, BookOpen } from 'lucide-react';
+import { Plus, Edit2, Trash2, Loader2, BookOpen, Archive, RotateCcw } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 export default function AdminSubjects() {
   const { data: subjects = [], isLoading } = useSubjects();
-  
+
   const createSubject = useCreateSubject();
   const updateSubject = useUpdateSubject();
   const deleteSubject = useDeleteSubject();
+  const deactivateSubject = useDeactivateSubject();
+  const reactivateSubject = useReactivateSubject();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('all');
 
   const [formData, setFormData] = useState({
     name: '',
     code: ''
   });
 
-  const filteredSubjects = subjects.filter(s => 
-    s.name.toLowerCase().includes(search.toLowerCase()) || 
-    (s.code && s.code.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filteredSubjects = subjects.filter(s => {
+    const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) ||
+      (s.code && s.code.toLowerCase().includes(search.toLowerCase()));
+
+    const matchesStatus = statusFilter === 'all' ||
+      (statusFilter === 'active' && s.is_active !== false) ||
+      (statusFilter === 'archived' && s.is_active === false);
+
+    return matchesSearch && matchesStatus;
+  });
 
   const handleOpenDialog = (subject?: any) => {
     if (subject) {
@@ -71,12 +80,35 @@ export default function AdminSubjects() {
 
         <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm flex flex-col h-[calc(100vh-12rem)] min-h-[400px]">
           <div className="p-4 border-b border-border flex items-center gap-4">
-            <Input 
-              placeholder="Search subjects..." 
+            <Input
+              placeholder="Search subjects..."
               className="max-w-xs h-10"
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
+            <div className="flex gap-2">
+              <Button
+                variant={statusFilter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setStatusFilter('all')}
+              >
+                All
+              </Button>
+              <Button
+                variant={statusFilter === 'active' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setStatusFilter('active')}
+              >
+                Active
+              </Button>
+              <Button
+                variant={statusFilter === 'archived' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setStatusFilter('archived')}
+              >
+                Archived
+              </Button>
+            </div>
           </div>
           <div className="flex-1 overflow-auto">
             {isLoading ? (
@@ -91,13 +123,14 @@ export default function AdminSubjects() {
                     <TableHead className="w-[80px]">Icon</TableHead>
                     <TableHead>Subject Name</TableHead>
                     <TableHead>Code</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredSubjects.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                         No subjects found.
                       </TableCell>
                     </TableRow>
@@ -112,35 +145,69 @@ export default function AdminSubjects() {
                         </TableCell>
                         <TableCell className="font-heading font-medium text-foreground">{s.name}</TableCell>
                         <TableCell className="text-muted-foreground font-mono text-sm">{s.code || '-'}</TableCell>
+                        <TableCell>
+                          {s.is_active === false ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300">
+                              Archived
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                              Active
+                            </span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(s)} title="Edit Subject">
                               <Edit2 className="w-4 h-4 text-muted-foreground" />
                             </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50" title="Delete Subject">
-                                  <Trash2 className="w-4 h-4" />
+                            {s.is_active === false ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => reactivateSubject.mutate(s.id)}
+                                title="Reactivate Subject"
+                                disabled={reactivateSubject.isPending}
+                              >
+                                <RotateCcw className="w-4 h-4 text-green-600" />
+                              </Button>
+                            ) : (
+                              <>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50" title="Delete Subject">
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Subject</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to permanently delete {s.name}? This action cannot be undone.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-red-600 hover:bg-red-700 text-white"
+                                        onClick={() => deleteSubject.mutate(s.id)}
+                                      >
+                                        Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => deactivateSubject.mutate(s.id)}
+                                  title="Deactivate Subject"
+                                  disabled={deactivateSubject.isPending}
+                                >
+                                  <Archive className="w-4 h-4 text-orange-600" />
                                 </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Subject</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete {s.name}? You cannot delete a subject that is currently assigned to classes.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction 
-                                    className="bg-red-600 hover:bg-red-700 text-white"
-                                    onClick={() => deleteSubject.mutate(s.id)}
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                              </>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

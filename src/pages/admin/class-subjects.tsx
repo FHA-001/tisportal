@@ -130,15 +130,17 @@ export default function AdminClassSubjects() {
                   </SelectTrigger>
 
                   <SelectContent>
-                    {subjects.map((subject: any) => (
-                      <SelectItem
-                        key={subject.id}
-                        value={subject.id}
-                      >
-                        {subject.name}{' '}
-                        {subject.code ? `(${subject.code})` : ''}
-                      </SelectItem>
-                    ))}
+                    {subjects
+                      .filter((subject: any) => subject.is_active !== false)
+                      .map((subject: any) => (
+                        <SelectItem
+                          key={subject.id}
+                          value={subject.id}
+                        >
+                          {subject.name}{' '}
+                          {subject.code ? `(${subject.code})` : ''}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

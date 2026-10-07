@@ -189,9 +189,41 @@ export const useDeleteSubject = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      const { data, error } = await supabase.rpc(
+        'delete_subject_if_unused',
+        { p_subject_id: id }
+      );
+
+      if (error) throw error;
+
+      if (!data?.deleted) {
+        const error = new Error(data?.reason || 'Subject cannot be deleted');
+        (error as any).dependencyInfo = data;
+        throw error;
+      }
+
+      return data;
+    },
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['subjects'] });
+      toast.success('Subject deleted successfully');
+    },
+
+    onError: (err: any) => {
+      toast.error(err.message);
+    }
+  });
+};
+
+export const useDeactivateSubject = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
       const { error } = await supabase
         .from('subjects')
-        .delete()
+        .update({ is_active: false })
         .eq('id', id);
 
       if (error) throw error;
@@ -199,7 +231,29 @@ export const useDeleteSubject = () => {
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['subjects'] });
-      toast.success('Subject deleted successfully');
+      toast.success('Subject deactivated successfully');
+    },
+
+    onError: (err: any) => toast.error(err.message)
+  });
+};
+
+export const useReactivateSubject = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('subjects')
+        .update({ is_active: true })
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['subjects'] });
+      toast.success('Subject reactivated successfully');
     },
 
     onError: (err: any) => toast.error(err.message)

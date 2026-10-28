@@ -4,6 +4,9 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { ScrollToTop } from '@/components/shared/scroll-to-top';
+import { useEffect, useRef } from 'react';
+import { supabase } from '@/lib/supabaseClient';
+import { setQueryClient } from '@/lib/portal-auth';
 
 
 // Pages
@@ -31,6 +34,7 @@ import AdminParents from '@/pages/admin/parents';
 import AdminClasses from '@/pages/admin/classes';
 import AdminSubjects from '@/pages/admin/subjects';
 import AdminClassSubjects from '@/pages/admin/class-subjects';
+import AdminGradeManagement from '@/pages/admin/grade-management';
 import AdminGrades from '@/pages/admin/grades';
 import AdminReports from '@/pages/admin/reports';
 import AdminSchoolFees from '@/pages/admin/school-fees';
@@ -74,6 +78,7 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
+      staleTime: 0, // Always refetch on mount to ensure fresh data
     },
   },
 });
@@ -96,6 +101,7 @@ function Router() {
       <Route path="/admin/classes" component={AdminClasses} />
       <Route path="/admin/subjects" component={AdminSubjects} />
       <Route path="/admin/class-subjects" component={AdminClassSubjects} />
+      <Route path="/admin/grade-management" component={AdminGradeManagement} />
       <Route path="/admin/grades" component={AdminGrades} />
       <Route path="/admin/reports" component={AdminReports} />
       <Route path="/admin/school-fees" component={AdminSchoolFees} />
@@ -150,6 +156,25 @@ function Router() {
 }
 
 function App() {
+  const queryClientRef = useRef(queryClient);
+
+  useEffect(() => {
+    // Register query client for manual cache clearing on logout
+    setQueryClient(queryClientRef.current);
+
+    // Clear all cached data when auth state changes (sign in/sign out)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event) => {
+        if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
+          // Clear all queries to prevent stale data from previous account
+          queryClientRef.current.clear();
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <QueryClientProvider client={queryClient}>

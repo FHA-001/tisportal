@@ -411,3 +411,115 @@ export const useLogAudit = () => {
     }
   });
 };
+
+// --- SECURE ADMIN GRADES ---
+export const useAdminGrades = (
+  classSubjectId?: string,
+  filters?: { term?: string; session?: string }
+) => {
+  return useQuery({
+    queryKey: ['admin-grades', classSubjectId, filters],
+
+    queryFn: async () => {
+      if (!classSubjectId) {
+        return [];
+      }
+
+      const { data, error } = await supabase.rpc(
+        'get_admin_grades',
+        {
+          p_class_subject_id: classSubjectId,
+          p_term: filters?.term || null,
+          p_session: filters?.session || null,
+        }
+      );
+
+      if (error) throw error;
+
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        student_id: row.student_id,
+        class_subject_id: row.class_subject_id,
+        term: row.term,
+        session: row.session,
+
+        test_1: row.test_1,
+        test_2: row.test_2,
+        project_1: row.project_1,
+        assignment_1: row.assignment_1,
+        exam: row.exam,
+
+        total: row.total,
+        grade_letter: row.grade_letter,
+        remark: row.remark,
+
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+
+        students: {
+          full_name: row.student_full_name,
+          admission_number: row.student_admission_number,
+          tier: row.student_tier,
+          class_id: row.student_class_id,
+        },
+
+        class_subjects: {
+          subject_id: row.class_subject_subject_id,
+          class_id: row.class_subject_class_id,
+
+          subjects: {
+            name: row.subject_name,
+            code: row.subject_code,
+          },
+
+          classes: {
+            name: row.class_subject_class_name,
+            tier: row.class_subject_class_tier,
+          },
+        },
+      }));
+    },
+
+    enabled: Boolean(classSubjectId),
+  });
+};
+
+// --- SECURE ADMIN SAVE GRADES ---
+export const useSaveAdminGrades = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: any[]) => {
+      const { data, error } = await supabase.rpc(
+        'save_admin_grades',
+        {
+          p_grades: payload as any,
+        }
+      );
+
+      if (error) throw error;
+
+      if (data?.success !== true) {
+        throw new Error(
+          data?.error || 'Failed to save grades'
+        );
+      }
+
+      return data;
+    },
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['admin-grades'],
+      });
+
+      toast.success('Grades saved successfully');
+    },
+
+    onError: (err: any) => {
+      toast.error(
+        err.message || 'Failed to save grades'
+      );
+    },
+  });
+};

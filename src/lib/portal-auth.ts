@@ -3,6 +3,19 @@ import {
   clearCustomSession,
 } from '@/lib/auth-utils';
 
+// Global query client reference for cache clearing
+let queryClientInstance: any = null;
+
+export function setQueryClient(client: any) {
+  queryClientInstance = client;
+}
+
+export function clearQueryCache() {
+  if (queryClientInstance) {
+    queryClientInstance.clear();
+  }
+}
+
 export type PortalRole = 'admin' | 'teacher' | 'accountant' | 'parent';
 
 export type PortalIdentity = {
@@ -78,6 +91,7 @@ export async function loginPortalUser(
 ): Promise<PortalLoginResult> {
   clearCustomSession();
   clearAdminSessionTimestamp();
+  clearQueryCache(); // Clear cached data from previous account
   await supabase.auth.signOut();
 
   const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -257,6 +271,7 @@ export async function changePortalAuthPassword(
 
 export async function prepareForStudentLogin(): Promise<void> {
   clearCustomSession();
+  clearQueryCache(); // Clear cached data from previous account
 
   try {
     await supabase.auth.signOut();

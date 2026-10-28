@@ -3,7 +3,7 @@ import { CustomSessionGuard } from '@/components/shared/custom-session-guard';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatCard } from '@/components/shared/stat-card';
 import { BookOpen, Award, ClipboardPenLine } from 'lucide-react';
-import { useClassSubjects } from '@/hooks/use-academics';
+import { useTeacherClassSubjects } from '@/hooks/use-academics';
 import { usePortalIdentity } from '@/hooks/use-portal-identity';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { getTimeBasedGreeting } from '@/lib/greeting';
@@ -11,13 +11,11 @@ import { getTimeBasedGreeting } from '@/lib/greeting';
 export default function TeacherDashboard() {
   const { data: portalIdentity } = usePortalIdentity();
 
-  const { data: assignments = [] } = useClassSubjects(
-    undefined,
-    portalIdentity?.profile_id
-  );
+  // Use auth-native hook for teacher assignments (A8.2B migration)
+  const { data: assignments = [] } = useTeacherClassSubjects();
 
   const uniqueClassIds = new Set(
-    assignments.map((assignment) => assignment.class_id)
+    assignments.map((assignment: any) => assignment.class_id)
   );
 
   const classCount = uniqueClassIds.size;
@@ -76,7 +74,7 @@ export default function TeacherDashboard() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {assignments.map((assignment) => (
+                  {assignments.map((assignment: any) => (
                     <div
                       key={assignment.id}
                       className="

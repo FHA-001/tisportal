@@ -38,6 +38,7 @@ export default function TeacherGrading() {
 
   const { data: studentsData = [], isLoading: loadingStudents } = useStudents('teacher', selectedClass);
   const students = studentsData as any[];
+  const isSSSClass = targetAssignment?.classes?.tier?.toLowerCase().includes('senior');
 
   const { data: gradesData = [], isLoading: loadingGrades } = useTeacherGrades(
     selectedAssignmentId,
@@ -173,7 +174,15 @@ export default function TeacherGrading() {
       }
     }
 
-    const payload = Object.values(localGrades).map(localData => {
+    // Filter out excluded students from payload for SSS classes
+    const payload = Object.values(localGrades)
+      .filter(localData => {
+        if (isSSSClass && excludedStudentsMap.has(localData.student_id)) {
+          return false; // Skip excluded students
+        }
+        return true;
+      })
+      .map(localData => {
       const scores = {
         test_1: localData.test_1 === '' ? null : Number(localData.test_1),
         test_2: localData.test_2 === '' ? null : Number(localData.test_2),
@@ -390,6 +399,7 @@ export default function TeacherGrading() {
                 <TableBody>
                   {students.map((student: any) => {
                     const localData = localGrades[student.id] || {};
+                    const isExcluded = excludedStudentsMap.has(student.id);
                     
                     // Live computation for UI feedback
                     const scores = {
@@ -404,9 +414,16 @@ export default function TeacherGrading() {
                     const gradeLetter = hasAnyScore ? getGradeLetter(total) : null;
 
                     return (
-                      <TableRow key={student.id} className="group">
+                      <TableRow key={student.id} className={isExcluded ? 'bg-muted/50' : 'group'}>
                         <TableCell className="font-medium sticky left-0 bg-card group-hover:bg-muted/50 z-10 shadow-[1px_0_0_0_var(--color-border)]">
-                          {student.full_name}
+                          <div className="flex items-center gap-2">
+                            {student.full_name}
+                            {isExcluded && (
+                              <span className="text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded-full">
+                                Not Enrolled
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Input 
@@ -414,6 +431,7 @@ export default function TeacherGrading() {
                             className="h-9 w-20 mx-auto text-center" 
                             value={localData.test_1 ?? ''} 
                             onChange={e => handleScoreChange(student.id, 'test_1', e.target.value)}
+                            disabled={isExcluded}
                           />
                         </TableCell>
                         <TableCell>
@@ -422,6 +440,7 @@ export default function TeacherGrading() {
                             className="h-9 w-20 mx-auto text-center" 
                             value={localData.test_2 ?? ''} 
                             onChange={e => handleScoreChange(student.id, 'test_2', e.target.value)}
+                            disabled={isExcluded}
                           />
                         </TableCell>
                         <TableCell>
@@ -430,6 +449,7 @@ export default function TeacherGrading() {
                             className="h-9 w-20 mx-auto text-center" 
                             value={localData.project_1 ?? ''} 
                             onChange={e => handleScoreChange(student.id, 'project_1', e.target.value)}
+                            disabled={isExcluded}
                           />
                         </TableCell>
                         <TableCell>
@@ -438,6 +458,7 @@ export default function TeacherGrading() {
                             className="h-9 w-20 mx-auto text-center" 
                             value={localData.assignment_1 ?? ''} 
                             onChange={e => handleScoreChange(student.id, 'assignment_1', e.target.value)}
+                            disabled={isExcluded}
                           />
                         </TableCell>
                         <TableCell>
@@ -446,6 +467,7 @@ export default function TeacherGrading() {
                             className="h-9 w-20 mx-auto text-center border-primary/30 focus-visible:ring-primary/50" 
                             value={localData.exam ?? ''} 
                             onChange={e => handleScoreChange(student.id, 'exam', e.target.value)}
+                            disabled={isExcluded}
                           />
                         </TableCell>
                         <TableCell className="text-center">

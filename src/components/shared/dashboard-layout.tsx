@@ -34,7 +34,7 @@ import { TISLogo } from './tis-logo';
 import { ThemeToggle } from './theme-toggle';
 import { supabase } from '@/lib/supabaseClient';
 import { getCustomSession, signOutCustomSession } from '@/lib/auth-utils';
-import { clearAdminSessionTimestamp } from '@/lib/portal-auth';
+import { clearAdminSessionTimestamp, clearQueryCache } from '@/lib/portal-auth';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePortalIdentity } from '@/hooks/use-portal-identity';
 
@@ -126,7 +126,8 @@ const adminNavSections: NavSection[] = [
       { label: 'Classes', path: '/admin/classes', icon: BookOpen },
       { label: 'Subjects', path: '/admin/subjects', icon: FileText },
       { label: 'Class-Subject Assignments', path: '/admin/class-subjects', icon: LinkIcon },
-      { label: 'Grades', path: '/admin/grades', icon: Award },
+      { label: 'Grade Management', path: '/admin/grade-management', icon: Award },
+      { label: 'Class Results', path: '/admin/grades', icon: ClipboardList },
     ]
   },
   {
@@ -263,6 +264,9 @@ export function DashboardLayout({ role, children }: DashboardLayoutProps) {
     if (role === 'admin') {
       clearAdminSessionTimestamp();
     }
+
+    // Clear React Query cache to prevent stale data after logout
+    clearQueryCache();
 
     // All roles except Student use Supabase Auth sign-out
     if (role !== 'student') {

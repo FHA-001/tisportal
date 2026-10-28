@@ -6,6 +6,38 @@ import { getGradeRemark, type GradeLetter, getMaxScores } from './auth-utils';
 import { getClassTeacherRemark, getPrincipalRemark } from './remarks';
 import { isGradeRowCompletelyBlank, isSeniorSecondary } from './reportCardData';
 
+/**
+ * Get remarks heading and signatory based on student tier
+ * - Nursery and Primary: "HEAD TEACHER'S REMARKS" with signatory "Mrs Zulaihatu Musa Muhammed"
+ * - Junior Secondary and Senior Secondary: "PRINCIPAL'S REMARKS" with signatory "Musa Isa Bulus"
+ * - Unknown/missing tiers: Defaults to Principal's Remarks with a warning
+ */
+function getRemarksInfo(tier: string) {
+  const tierLower = tier.toLowerCase();
+
+  // Explicitly recognize known tiers
+  if (tierLower === 'nursery' || tierLower === 'primary') {
+    return {
+      heading: "HEAD TEACHER'S REMARKS",
+      signatory: 'Mrs Zulaihatu Musa Muhammed',
+    };
+  }
+
+  if (tierLower === 'junior secondary' || tierLower === 'senior secondary') {
+    return {
+      heading: "PRINCIPAL'S REMARKS",
+      signatory: 'Musa Isa Bulus',
+    };
+  }
+
+  // Handle unknown or missing tier values deliberately
+  console.warn(`Unknown tier value: "${tier}". Defaulting to Principal's Remarks.`);
+  return {
+    heading: "PRINCIPAL'S REMARKS",
+    signatory: 'Musa Isa Bulus',
+  };
+}
+
 export type ReportCardGradeRow = {
   subject: string;
   test_1: number | null;
@@ -722,6 +754,8 @@ const gradingTextX = gradingLabelX + gradingLabelWidth + 5;
   const principalRemark =
     getPrincipalRemark(average);
 
+  const remarksInfo = getRemarksInfo(student.tier);
+
   const remarkBoxes = [
     {
       title: "CLASS TEACHER'S REMARK",
@@ -729,8 +763,8 @@ const gradingTextX = gradingLabelX + gradingLabelWidth + 5;
       text: teacherRemark,
     },
     {
-      title: "PRINCIPAL'S REMARK",
-      teacherName: '',
+      title: remarksInfo.heading,
+      teacherName: remarksInfo.signatory,
       text: principalRemark,
     },
   ];

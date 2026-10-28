@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { clearQueryCache } from './portal-auth';
 
 
 
@@ -563,117 +564,36 @@ export function clearCustomSession(): void {
 
 
 
-
-
-
 export async function signOutCustomSession(): Promise<void> {
-
-
-
   const session = getStoredCustomSession();
 
-
-
-
-
-
+  // Clear React Query cache to prevent stale data after logout
+  clearQueryCache();
 
   try {
-
-
-
     if (session?.session_token) {
-
-
-
       await supabase.rpc('logout_custom_session', {
-
-
-
         p_token: session.session_token,
-
-
-
       });
-
-
-
     }
-
-
-
   } catch {
-
-
-
     // Logout must still complete locally even if the compatibility RPC fails.
-
-
-
   }
-
-
-
-
-
-
 
   try {
-
-
-
     // Teacher / Accountant / Parent now also have Supabase Auth sessions.
-
-
-
     // For Students this is harmless and also clears any stale Supabase session.
-
-
-
     await supabase.auth.signOut();
-
-
-
   } catch {
-
-
-
     // Local custom-session cleanup must still complete.
-
-
-
   } finally {
-
-
-
     clearCustomSession();
-
-
-
   }
-
-
-
 }
 
-
-
-
-
-
-
 function getStoredCustomSession(): CustomSession | null {
-
-
-
   try {
-
-
-
     const raw = localStorage.getItem(SESSION_KEY);
-
-
-
     return raw ? (JSON.parse(raw) as CustomSession) : null;
 
 

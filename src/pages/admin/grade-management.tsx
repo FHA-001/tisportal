@@ -5,7 +5,6 @@ import { PageHeader } from '@/components/shared/page-header';
 import { useClasses, useAcademicSessions, useClassSubjects } from '@/hooks/use-academics';
 import { useStudents } from '@/hooks/use-users';
 import { useAdminGrades, useSaveAdminGrades } from '@/hooks/use-records';
-import { useStudentEnrollments } from '@/hooks/use-enrollments';
 import { getGradeLetter, getGradeRemark, computeTotal, getMaxScores } from '@/lib/auth-utils';
 import { validateGradeData } from '@/lib/validation';
 import { Button } from '@/components/ui/button';
@@ -37,24 +36,6 @@ export default function AdminGradeManagement() {
 
   const { data: studentsData = [], isLoading: loadingStudents } = useStudents('admin', selectedClassId);
   const students = studentsData as any[];
-
-  // Fetch enrollments for SSS classes to check exclusions
-  const { data: enrollmentsData = [] } = useStudentEnrollments(selectedClassId);
-  const enrollments = enrollmentsData as any[];
-
-  // Build map of excluded students: studentId -> boolean (true = excluded)
-  const excludedStudentsMap = useMemo(() => {
-    const map = new Map<string, boolean>();
-    if (!targetClassSubject?.classes?.tier?.toLowerCase().includes('senior')) {
-      return map; // Only applies to SSS
-    }
-    enrollments.forEach((e: any) => {
-      if (e.is_offering === false) {
-        map.set(e.student_id, true);
-      }
-    });
-    return map;
-  }, [enrollments, targetClassSubject]);
 
   const isSSSClass = targetClassSubject?.classes?.tier?.toLowerCase().includes('senior');
 
@@ -196,15 +177,7 @@ export default function AdminGradeManagement() {
       }
     }
 
-    // Filter out excluded students from payload for SSS classes
-    const payload = Object.values(localGrades)
-      .filter(localData => {
-        if (isSSSClass && excludedStudentsMap.has(localData.student_id)) {
-          return false; // Skip excluded students
-        }
-        return true;
-      })
-      .map(localData => {
+    const payload = Object.values(localGrades).map(localData => {
       const scores = {
         test_1: localData.test_1 === '' ? null : Number(localData.test_1),
         test_2: localData.test_2 === '' ? null : Number(localData.test_2),
@@ -437,7 +410,6 @@ export default function AdminGradeManagement() {
                 <TableBody>
                   {students.map((student: any) => {
                     const localData = localGrades[student.id] || {};
-                    const isExcluded = excludedStudentsMap.has(student.id);
                     
                     // Live computation for UI feedback
                     const scores = {
@@ -452,15 +424,10 @@ export default function AdminGradeManagement() {
                     const gradeLetter = hasAnyScore ? getGradeLetter(total) : null;
 
                     return (
-                      <TableRow key={student.id} className={isExcluded ? 'bg-muted/50' : 'group'}>
+                      <TableRow key={student.id} className='group'>
                         <TableCell className="font-medium sticky left-0 bg-card group-hover:bg-muted/50 z-10 shadow-[1px_0_0_0_var(--color-border)]">
                           <div className="flex items-center gap-2">
                             {student.full_name}
-                            {isExcluded && (
-                              <span className="text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded-full">
-                                Not Enrolled
-                              </span>
-                            )}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -469,7 +436,6 @@ export default function AdminGradeManagement() {
                             className="h-9 w-20 mx-auto text-center" 
                             value={localData.test_1 ?? ''} 
                             onChange={e => handleScoreChange(student.id, 'test_1', e.target.value)}
-                            disabled={isExcluded}
                           />
                         </TableCell>
                         <TableCell>
@@ -478,7 +444,6 @@ export default function AdminGradeManagement() {
                             className="h-9 w-20 mx-auto text-center" 
                             value={localData.test_2 ?? ''} 
                             onChange={e => handleScoreChange(student.id, 'test_2', e.target.value)}
-                            disabled={isExcluded}
                           />
                         </TableCell>
                         <TableCell>
@@ -487,7 +452,6 @@ export default function AdminGradeManagement() {
                             className="h-9 w-20 mx-auto text-center" 
                             value={localData.project_1 ?? ''} 
                             onChange={e => handleScoreChange(student.id, 'project_1', e.target.value)}
-                            disabled={isExcluded}
                           />
                         </TableCell>
                         <TableCell>
@@ -496,7 +460,6 @@ export default function AdminGradeManagement() {
                             className="h-9 w-20 mx-auto text-center" 
                             value={localData.assignment_1 ?? ''} 
                             onChange={e => handleScoreChange(student.id, 'assignment_1', e.target.value)}
-                            disabled={isExcluded}
                           />
                         </TableCell>
                         <TableCell>
@@ -505,7 +468,6 @@ export default function AdminGradeManagement() {
                             className="h-9 w-20 mx-auto text-center border-primary/30 focus-visible:ring-primary/50" 
                             value={localData.exam ?? ''} 
                             onChange={e => handleScoreChange(student.id, 'exam', e.target.value)}
-                            disabled={isExcluded}
                           />
                         </TableCell>
                         <TableCell className="text-center">
